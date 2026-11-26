@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Form
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from app.api.dependencies import SettingsDep, TranscriptionServiceDep, UploadedAudioDep
 from app.core.security import verify_api_key
@@ -15,6 +15,7 @@ router = APIRouter(tags=["OpenAI Compatible"])
 
 @router.post(
     "/v1/audio/transcriptions",
+    response_model=None,
     dependencies=[Depends(verify_api_key)],
     summary="OpenAI-compatible speech-to-text endpoint",
 )
@@ -28,7 +29,7 @@ async def openai_audio_transcriptions(
     response_format: Literal["json", "text", "srt", "verbose_json", "vtt"] = Form(default="json"),
     temperature: float = Form(default=0.0, ge=0.0, le=1.0),
     timestamp_granularities: list[str] | None = Form(default=None, alias="timestamp_granularities[]"),
-) -> JSONResponse | PlainTextResponse:
+) -> Response:
     """Drop-in compatible with the OpenAI Audio Transcriptions API."""
     want_segments = response_format in {"verbose_json", "srt", "vtt"}
     want_words = bool(timestamp_granularities and "word" in timestamp_granularities)
