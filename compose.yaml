@@ -1,0 +1,86 @@
+name: nigerian-english-asr
+
+services:
+  asr-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+        TORCH_INDEX_URL: "${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+    image: nigerian-english-asr-api:latest
+    container_name: nigerian-english-asr-api
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HF_TOKEN: "${HF_TOKEN:-}"
+      MODEL_ID: "${MODEL_ID:-NCAIR1/NigerianAccentedEnglish}"
+      ENGINE: "${ENGINE:-ctranslate2}"
+      DEVICE: "${DEVICE:-auto}"
+      COMPUTE_TYPE: "${COMPUTE_TYPE:-auto}"
+      DELETE_HF_SNAPSHOT_AFTER_CONVERT: "${DELETE_HF_SNAPSHOT_AFTER_CONVERT:-false}"
+      PRELOAD_MODEL: "${PRELOAD_MODEL:-true}"
+      DEFAULT_LANGUAGE: "${DEFAULT_LANGUAGE:-en}"
+      BEAM_SIZE: "${BEAM_SIZE:-2}"
+      VAD_FILTER: "${VAD_FILTER:-true}"
+      ENABLE_BATCHED_INFERENCE: "${ENABLE_BATCHED_INFERENCE:-true}"
+      BATCH_SIZE: "${BATCH_SIZE:-8}"
+      CPU_THREADS: "${CPU_THREADS:-2}"
+      OMP_NUM_THREADS: "${CPU_THREADS:-2}"
+      MKL_NUM_THREADS: "${CPU_THREADS:-2}"
+      OPENBLAS_NUM_THREADS: "${CPU_THREADS:-2}"
+      NUM_WORKERS: "${NUM_WORKERS:-1}"
+      MAX_CONCURRENT_TRANSCRIPTIONS: "${MAX_CONCURRENT_TRANSCRIPTIONS:-2}"
+      MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-25}"
+      MAX_WS_CONNECTIONS: "${MAX_WS_CONNECTIONS:-8}"
+      STREAM_PARTIAL_INTERVAL_MS: "${STREAM_PARTIAL_INTERVAL_MS:-600}"
+      STREAM_SILENCE_MS: "${STREAM_SILENCE_MS:-800}"
+      STREAM_MAX_UTTERANCE_S: "${STREAM_MAX_UTTERANCE_S:-20.0}"
+      API_KEY: "${API_KEY:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+    volumes:
+      # Server-side cache for HF download + one-time quantized CTranslate2 model
+      - model_cache:/cache
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT:-2.0}"
+          memory: "${MEMORY_LIMIT:-3G}"
+        reservations:
+          cpus: "${CPU_RESERVATION:-0.5}"
+          memory: "${MEMORY_RESERVATION:-1G}"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  model_cache:
+    name: nigerian_english_asr_cache

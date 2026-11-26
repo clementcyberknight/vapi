@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nigerian Accented English — Live Streaming Demo</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
+    body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; background: #0b0f14; color: #e6edf3; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+    p.sub { color: #8b949e; margin-top: 0; }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+    input { flex: 1; min-width: 220px; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #30363d; background: #161b22; color: #e6edf3; }
+    button { padding: 0.6rem 1rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; }
+    #startBtn { background: #238636; color: #fff; }
+    #stopBtn { background: #da3633; color: #fff; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .status { font-size: 0.85rem; color: #8b949e; margin-bottom: 0.75rem; }
+    .box { min-height: 220px; padding: 1rem; border-radius: 10px; border: 1px solid #30363d; background: #161b22; line-height: 1.6; white-space: pre-wrap; }
+    .partial { color: #79c0ff; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Nigerian Accented English — Real-Time Streaming ASR</h1>
+  <p class="sub">Streams 16 kHz PCM16 microphone audio to <code>/api/v1/stream</code> over WebSocket.</p>
+
+  <div class="row">
+    <input id="wsUrl" type="text" value="ws://localhost:8000/api/v1/stream" placeholder="WebSocket URL" />
+    <input id="apiKey" type="password" placeholder="Optional API Key" />
+    <button id="startBtn">Start Mic</button>
+    <button id="stopBtn" disabled>Stop</button>
+  </div>
+  <div class="status" id="status">Idle</div>
+  <div class="box"><span id="finalText"></span><span id="partialText" class="partial"></span></div>
+
+  <script>
+    const wsUrlInput = document.getElementById("wsUrl");
+    const apiKeyInput = document.getElementById("apiKey");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const statusEl = document.getElementById("status");
+    const finalEl = document.getElementById("finalText");
+    const partialEl = document.getElementById("partialText");
+
+    let ws, audioCtx, stream, processor;
+
+    function downsampleTo16k(float32, inputRate) {
+      if (inputRate === 16000) return float32;
+      const ratio = inputRate / 16000;
+      const newLen = Math.round(float32.length / ratio);
+      const result = new Float32Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        result[i] = float32[Math.min(Math.round(i * ratio), float32.length - 1)];
+      }
+      return result;
+    }
+
+    function float32ToPcm16(float32) {
+      const buf = new ArrayBuffer(float32.length * 2);
+      const view = new DataView(buf);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      return buf;
+    }
+
+    startBtn.onclick = async () => {
+      const url = new URL(wsUrlInput.value.trim());
+      if (apiKeyInput.value.trim()) url.searchParams.set("api_key", apiKeyInput.value.trim());
+      url.searchParams.set("sample_rate", "16000");
+
+      ws = new WebSocket(url.toString());
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = async () => {
+        statusEl.textContent = "Connected — requesting microphone...";
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, noiseSuppression: true } });
+        audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (e) => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const down = downsampleTo16k(e.inputBuffer.getChannelData(0), audioCtx.sampleRate);
+            ws.send(float32ToPcm16(down));
+          }
+        };
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+        statusEl.textContent = "Streaming live microphone audio...";
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      };
+
+      ws.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === "partial") {
+          partialEl.textContent = (finalEl.textContent ? " " : "") + msg.text;
+        } else if (msg.type === "final") {
+          partialEl.textContent = "";
+          finalEl.textContent += (finalEl.textContent ? " " : "") + msg.text;
+        } else if (msg.type === "error") {
+          statusEl.textContent = `Error: ${msg.message}`;
+        } else if (msg.type === "done") {
+          statusEl.textContent = `Done (${msg.total_segments} segments, ${msg.total_audio_seconds}s audio)`;
+        }
+      };
+
+      ws.onclose = () => {
+        cleanupAudio();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+    };
+
+    stopBtn.onclick = () => {
+      cleanupAudio();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "end" }));
+      }
+      statusEl.textContent = "Finalizing...";
+      stopBtn.disabled = true;
+    };
+
+    function cleanupAudio() {
+      if (processor) { processor.disconnect(); processor = null; }
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
+      if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+    }
+  </script>
+</body>
+</html>

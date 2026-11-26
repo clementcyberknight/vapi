@@ -1,0 +1,26 @@
+# Optional NVIDIA GPU override.
+# Usage: docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
+
+services:
+  asr-api:
+    build:
+      args:
+        TORCH_INDEX_URL: "${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu126}"
+    environment:
+      DEVICE: "cuda"
+      COMPUTE_TYPE: "${COMPUTE_TYPE:-float16}"
+      BATCH_SIZE: "${BATCH_SIZE:-16}"
+      MAX_CONCURRENT_TRANSCRIPTIONS: "${MAX_CONCURRENT_TRANSCRIPTIONS:-4}"
+      NUM_WORKERS: "${NUM_WORKERS:-2}"
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT:-4.0}"
+          memory: "${MEMORY_LIMIT:-6G}"
+        reservations:
+          cpus: "${CPU_RESERVATION:-1.0}"
+          memory: "${MEMORY_RESERVATION:-2G}"
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

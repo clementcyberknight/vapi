@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables or `.env`."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Service metadata
+    app_name: str = Field(default="Nigerian Accented English ASR API")
+    app_version: str = Field(default="2.0.0")
+    environment: Literal["development", "production"] = Field(default="production")
+
+    # Model & Inference Engine
+    model_id: str = Field(
+        default="NCAIR1/NigerianAccentedEnglish",
+        description="Hugging Face model repository ID",
+    )
+    hf_token: str | None = Field(
+        default=None,
+        description="Hugging Face access token (required for gated repositories)",
+    )
+    engine: Literal["ctranslate2", "transformers"] = Field(
+        default="ctranslate2",
+        description="Inference backend: ctranslate2 (faster-whisper, 4-6x faster) or transformers",
+    )
+    device: Literal["auto", "cpu", "cuda"] = Field(
+        default="auto",
+        description="Target execution device",
+    )
+    compute_type: Literal["auto", "int8", "int8_float16", "float16", "float32"] = Field(
+        default="auto",
+        description="Quantization/compute precision (auto -> int8 on CPU, float16 on CUDA)",
+    )
+    cache_dir: Path = Field(
+        default=Path("/cache"),
+        description="Persistent directory for Hugging Face & CTranslate2 model cache",
+    )
+    delete_hf_snapshot_after_convert: bool = Field(
+        default=False,
+        description="Delete raw HF weights after CTranslate2 conversion to save disk space",
+    )
+    preload_model: bool = Field(
+        default=True,
+        description="Download, convert, and load the model during server startup",
+    )
+
+    # Decoding & Speed Tuning
+    default_language: str | None = Field(
+        default="en",
+        description="Default language code (setting 'en' skips language-detection overhead)",
+    )
+    beam_size: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Beam search width for final transcriptions (1=fastest greedy, 5=max accuracy)",
+    )
+    vad_filter: bool = Field(
+        default=True,
+        description="Enable Silero VAD to strip silence and speed up transcription",
+    )
+    vad_min_silence_ms: int = Field(
+        default=500,
+        ge=100,
+        le=5000,
+        description="Minimum silence duration (ms) for VAD segmentation",
+    )
+    enable_batched_inference: bool = Field(
+        default=True,
+        description="Use faster-whisper BatchedInferencePipeline for long audio files",
+    )
+    batch_size: int = Field(
+        default=8,
+        ge=1,
+        le=64,
+        description="Batch size for batched/chunked inference",
+    )
+    chunk_length_s: int = Field(
+        default=30,
+        ge=5,
+        le=30,
+        description="Chunk size in seconds for long audio",
+    )
+
+    # CPU / Worker Resource Controls
+    cpu_threads: int = Field(
+        default=2,
+        ge=1,
+        le=64,
+        description="Intra-op CPU threads (match your Docker CPU_LIMIT)",
+    )
+    num_workers: int = Field(
+        default=1,
+        ge=1,
+        le=8,
+        description="CTranslate2 parallel worker replicas inside the process",
+    )
+    max_concurrent_transcriptions: int = Field(
+        default=2,
+        ge=1,
+        le=32,
+        description="Maximum simultaneous inference executions",
+    )
+    max_upload_size_mb: int = Field(
+        default=25,
+        ge=1,
+        le=250,
+        description="Maximum uploaded audio file size in MB",
+    )
+
+    # Real-Time WebSocket Streaming Settings
+    max_ws_connections: int = Field(
+        default=8,
+        ge=1,
+        le=256,
+        description="Maximum concurrent live WebSocket streaming sessions",
+    )
+    stream_partial_interval_ms: int = Field(
+        default=600,
+        ge=150,
+        le=5000,
+        description="Minimum interval between interim partial transcripts during live speech",
+    )
+    stream_silence_ms: int = Field(
+        default=800,
+        ge=250,
+        le=5000,
+        description="Trailing silence duration (ms) that triggers segment finalization",
+    )
+    stream_min_speech_ms: int = Field(
+        default=300,
+        ge=100,
+        le=3000,
+        description="Minimum speech duration (ms) before emitting a transcript",
+    )
+    stream_max_utterance_s: float = Field(
+        default=20.0,
+        ge=5.0,
+        le=60.0,
+        description="Maximum buffered speech duration (s) before forcing finalization",
+    )
+    stream_energy_threshold: float = Field(
+        default=0.012,
+        ge=0.001,
+        le=0.5,
+        description="RMS energy threshold for real-time speech activity detection",
+    )
+
+    # Security, CORS, Logging
+    api_key: str | None = Field(
+        default=None,
+        description="Optional API key enforced on transcription & streaming endpoints",
+    )
+    cors_origins: list[str] = Field(
+        default=["*"],
+        description="Allowed CORS origins",
+    )
+    log_level: str = Field(default="INFO")
+    log_format: Literal["json", "text"] = Field(
+        default="json",
+        description="Structured JSON logs for production or readable text logs for dev",
+    )
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_size_mb * 1024 * 1024
+
+    @property
+    def ct2_cache_dir(self) -> Path:
+        return self.cache_dir / "ct2"
+
+    @property
+    def hf_cache_dir(self) -> Path:
+        return self.cache_dir / "huggingface"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
