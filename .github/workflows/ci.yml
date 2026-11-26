@@ -20,7 +20,7 @@ jobs:
       - name: Install lightweight test dependencies (no model download)
         run: |
           uv venv
-          uv pip install fastapi uvicorn[standard] python-multipart pydantic-settings numpy pytest pytest-asyncio httpx ruff
+          uv pip install fastapi uvicorn[standard] python-multipart aiofiles pydantic-settings numpy pytest pytest-asyncio httpx ruff
 
       - name: Lint with Ruff
         run: .venv/bin/ruff check app tests examples

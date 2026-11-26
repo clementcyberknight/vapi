@@ -11,11 +11,21 @@ class MetricsRegistry:
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     transcriptions_total: int = 0
     transcription_errors_total: int = 0
+    rejected_requests_total: int = 0
     stream_segments_total: int = 0
     audio_seconds_total: float = 0.0
     processing_seconds_total: float = 0.0
     active_transcriptions: int = 0
+    queued_transcriptions: int = 0
     active_ws_connections: int = 0
+
+    def inc_queued(self) -> None:
+        with self._lock:
+            self.queued_transcriptions += 1
+
+    def dec_queued(self) -> None:
+        with self._lock:
+            self.queued_transcriptions = max(0, self.queued_transcriptions - 1)
 
     def inc_active_transcriptions(self) -> None:
         with self._lock:
@@ -49,6 +59,10 @@ class MetricsRegistry:
         with self._lock:
             self.transcription_errors_total += 1
 
+    def record_rejected(self) -> None:
+        with self._lock:
+            self.rejected_requests_total += 1
+
     def render_prometheus(self, model_ready: bool) -> str:
         with self._lock:
             avg_rtf = (
@@ -69,6 +83,9 @@ class MetricsRegistry:
                 "# HELP asr_transcription_errors_total Total failed transcription attempts",
                 "# TYPE asr_transcription_errors_total counter",
                 f"asr_transcription_errors_total {self.transcription_errors_total}",
+                "# HELP asr_rejected_requests_total Total requests rejected due to queue backpressure",
+                "# TYPE asr_rejected_requests_total counter",
+                f"asr_rejected_requests_total {self.rejected_requests_total}",
                 "# HELP asr_audio_seconds_total Cumulative audio duration transcribed in seconds",
                 "# TYPE asr_audio_seconds_total counter",
                 f"asr_audio_seconds_total {self.audio_seconds_total:.3f}",
@@ -81,6 +98,9 @@ class MetricsRegistry:
                 "# HELP asr_active_transcriptions Currently running inference tasks",
                 "# TYPE asr_active_transcriptions gauge",
                 f"asr_active_transcriptions {self.active_transcriptions}",
+                "# HELP asr_queued_transcriptions Uploads currently waiting on disk for an inference slot",
+                "# TYPE asr_queued_transcriptions gauge",
+                f"asr_queued_transcriptions {self.queued_transcriptions}",
                 "# HELP asr_active_ws_connections Currently active real-time WebSocket streams",
                 "# TYPE asr_active_ws_connections gauge",
                 f"asr_active_ws_connections {self.active_ws_connections}",

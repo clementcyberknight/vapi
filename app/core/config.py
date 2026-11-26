@@ -19,10 +19,10 @@ class Settings(BaseSettings):
 
     # Service metadata
     app_name: str = Field(default="Nigerian Accented English ASR API")
-    app_version: str = Field(default="2.0.0")
+    app_version: str = Field(default="2.1.0")
     environment: Literal["development", "production"] = Field(default="production")
 
-    # Model & Inference Engine
+    # Model & Inference Backend
     model_id: str = Field(
         default="NCAIR1/NigerianAccentedEnglish",
         description="Hugging Face model repository ID",
@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     cache_dir: Path = Field(
         default=Path("/cache"),
         description="Persistent directory for Hugging Face & CTranslate2 model cache",
+    )
+    upload_tmp_dir: Path = Field(
+        default=Path("/cache/tmp"),
+        description="Disk-backed directory for streaming uploaded audio files (avoids RAM pressure)",
     )
     delete_hf_snapshot_after_convert: bool = Field(
         default=False,
@@ -82,7 +86,7 @@ class Settings(BaseSettings):
         description="Use faster-whisper BatchedInferencePipeline for long audio files",
     )
     batch_size: int = Field(
-        default=8,
+        default=4,
         ge=1,
         le=64,
         description="Batch size for batched/chunked inference",
@@ -94,7 +98,7 @@ class Settings(BaseSettings):
         description="Chunk size in seconds for long audio",
     )
 
-    # CPU / Worker Resource Controls
+    # Concurrency, Queuing & Resource Guardrails
     cpu_threads: int = Field(
         default=2,
         ge=1,
@@ -111,7 +115,19 @@ class Settings(BaseSettings):
         default=2,
         ge=1,
         le=32,
-        description="Maximum simultaneous inference executions",
+        description="Maximum simultaneous active audio decodes & model inferences in RAM",
+    )
+    max_queued_requests: int = Field(
+        default=20,
+        ge=1,
+        le=200,
+        description="Maximum total in-flight + queued transcription requests before HTTP 503 backpressure",
+    )
+    queue_timeout_seconds: float = Field(
+        default=300.0,
+        ge=5.0,
+        le=3600.0,
+        description="Maximum seconds a queued upload waits for an inference slot",
     )
     max_upload_size_mb: int = Field(
         default=25,
@@ -122,7 +138,7 @@ class Settings(BaseSettings):
 
     # Real-Time WebSocket Streaming Settings
     max_ws_connections: int = Field(
-        default=8,
+        default=16,
         ge=1,
         le=256,
         description="Maximum concurrent live WebSocket streaming sessions",

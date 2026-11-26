@@ -49,10 +49,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg libgomp1
 
-# Create non-root runtime user and persistent cache subdirectories
+# Create non-root runtime user and persistent cache/upload scratch directories
 RUN groupadd --gid 10001 appuser \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /cache/huggingface /cache/ct2 /cache/torch \
+    && mkdir -p /cache/huggingface /cache/ct2 /cache/torch /cache/tmp \
     && chown -R appuser:appuser /cache
 
 WORKDIR /app
@@ -65,6 +65,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
     TMPDIR="/tmp" \
     CACHE_DIR="/cache" \
+    UPLOAD_TMP_DIR="/cache/tmp" \
     XDG_CACHE_HOME="/cache" \
     HF_HOME="/cache/huggingface" \
     TORCH_HOME="/cache/torch" \

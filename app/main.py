@@ -11,41 +11,45 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.health import router as health_router
-from app.api.v1.openai import router as openai_router
-from app.api.v1.stream import router as stream_router
-from app.api.v1.transcribe import router as transcribe_router
+from app.api.v1.router import v1_router
 from app.core.config import Settings, get_settings
+from app.core.exceptions import ASRError, ServiceBusyError
 from app.core.logging import configure_logging, request_id_ctx
 from app.core.metrics import MetricsRegistry
 from app.schemas.transcription import ErrorResponse
-from app.services.engine import ASREngine
+from app.services.audio import cleanup_stale_uploads
+from app.services.transcription import TranscriptionService
 
 logger = logging.getLogger(__name__)
 
 
 def create_app(
     app_settings: Settings | None = None,
-    engine: ASREngine | None = None,
+    transcription_service: TranscriptionService | None = None,
     metrics: MetricsRegistry | None = None,
 ) -> FastAPI:
     cfg = app_settings or get_settings()
     configure_logging(level=cfg.log_level, log_format=cfg.log_format)
 
     metrics_registry = metrics or MetricsRegistry()
-    asr_engine = engine or ASREngine(cfg, metrics=metrics_registry)
+    service = transcription_service or TranscriptionService(cfg, metrics=metrics_registry)
 
     async def _preload_safely() -> None:
         try:
-            await asyncio.to_thread(asr_engine.load_model)
+            await asyncio.to_thread(service.load_model)
         except Exception:
-            # Details are already logged and exposed on /health/ready
+            # Details are logged by the backend and exposed via /health/ready
             pass
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.settings = cfg
-        app.state.engine = asr_engine
+        app.state.transcription_service = service
         app.state.metrics = metrics_registry
+
+        removed = cleanup_stale_uploads(cfg.upload_tmp_dir)
+        if removed:
+            logger.info("Cleaned up %d orphaned upload files in '%s'.", removed, cfg.upload_tmp_dir)
 
         preload_task: asyncio.Task[None] | None = None
         if cfg.preload_model:
@@ -92,6 +96,18 @@ def create_app(
         finally:
             request_id_ctx.reset(token)
 
+    @app.exception_handler(ASRError)
+    async def asr_exception_handler(request: Request, exc: ASRError) -> JSONResponse:
+        headers: dict[str, str] = {}
+        if isinstance(exc, ServiceBusyError):
+            headers["Retry-After"] = str(exc.retry_after)
+        body = ErrorResponse(
+            error=exc.code,
+            detail=exc.message,
+            request_id=request_id_ctx.get(),
+        )
+        return JSONResponse(status_code=exc.status_code, content=body.model_dump(), headers=headers)
+
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         body = ErrorResponse(
@@ -131,9 +147,7 @@ def create_app(
         }
 
     app.include_router(health_router)
-    app.include_router(transcribe_router)
-    app.include_router(stream_router)
-    app.include_router(openai_router)
+    app.include_router(v1_router)
 
     return app
 

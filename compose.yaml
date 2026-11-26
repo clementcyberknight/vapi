@@ -29,15 +29,18 @@ services:
       BEAM_SIZE: "${BEAM_SIZE:-2}"
       VAD_FILTER: "${VAD_FILTER:-true}"
       ENABLE_BATCHED_INFERENCE: "${ENABLE_BATCHED_INFERENCE:-true}"
-      BATCH_SIZE: "${BATCH_SIZE:-8}"
+      BATCH_SIZE: "${BATCH_SIZE:-4}"
       CPU_THREADS: "${CPU_THREADS:-2}"
       OMP_NUM_THREADS: "${CPU_THREADS:-2}"
       MKL_NUM_THREADS: "${CPU_THREADS:-2}"
       OPENBLAS_NUM_THREADS: "${CPU_THREADS:-2}"
       NUM_WORKERS: "${NUM_WORKERS:-1}"
       MAX_CONCURRENT_TRANSCRIPTIONS: "${MAX_CONCURRENT_TRANSCRIPTIONS:-2}"
+      MAX_QUEUED_REQUESTS: "${MAX_QUEUED_REQUESTS:-20}"
+      QUEUE_TIMEOUT_SECONDS: "${QUEUE_TIMEOUT_SECONDS:-300.0}"
       MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-25}"
-      MAX_WS_CONNECTIONS: "${MAX_WS_CONNECTIONS:-8}"
+      UPLOAD_TMP_DIR: "/cache/tmp"
+      MAX_WS_CONNECTIONS: "${MAX_WS_CONNECTIONS:-16}"
       STREAM_PARTIAL_INTERVAL_MS: "${STREAM_PARTIAL_INTERVAL_MS:-600}"
       STREAM_SILENCE_MS: "${STREAM_SILENCE_MS:-800}"
       STREAM_MAX_UTTERANCE_S: "${STREAM_MAX_UTTERANCE_S:-20.0}"
@@ -45,11 +48,11 @@ services:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       LOG_FORMAT: "${LOG_FORMAT:-json}"
     volumes:
-      # Server-side cache for HF download + one-time quantized CTranslate2 model
+      # Server-side cache for HF download, quantized CT2 model, and disk-backed upload scratch
       - model_cache:/cache
     read_only: true
     tmpfs:
-      - /tmp:size=128m,nosuid,nodev
+      - /tmp:size=64m,nosuid,nodev
     security_opt:
       - no-new-privileges:true
     cap_drop:

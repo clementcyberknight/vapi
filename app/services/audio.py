@@ -1,15 +1,24 @@
 from __future__ import annotations
 
-import os
+import logging
 import subprocess
-import tempfile
+import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+import aiofiles
 import numpy as np
-from fastapi import HTTPException, UploadFile, status
+
+from app.core.exceptions import (
+    InvalidAudioError,
+    PayloadTooLargeError,
+    UnsupportedAudioFormatError,
+)
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16_000
-READ_CHUNK_BYTES = 1024 * 1024  # 1 MiB
+UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1 MiB
 
 ALLOWED_EXTENSIONS = frozenset(
     {
@@ -31,49 +40,68 @@ ALLOWED_EXTENSIONS = frozenset(
 )
 
 
-async def save_upload_to_tempfile(upload: UploadFile, max_bytes: int) -> Path:
-    """Stream an uploaded audio file to temporary storage while enforcing max size."""
-    original_name = upload.filename or "audio"
+def validate_audio_filename(filename: str | None) -> str:
+    """Validate and return the normalized file extension (or '.bin' when omitted)."""
+    original_name = filename or "audio"
     suffix = Path(original_name).suffix.lower()
-
     if suffix and suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=(
-                f"Unsupported audio file extension '{suffix}'. "
-                f"Supported extensions: {', '.join(sorted(ALLOWED_EXTENSIONS))}."
-            ),
+        raise UnsupportedAudioFormatError(
+            f"Unsupported audio file extension '{suffix}'. "
+            f"Supported extensions: {', '.join(sorted(ALLOWED_EXTENSIONS))}."
         )
+    return suffix or ".bin"
 
-    fd, tmp_path_str = tempfile.mkstemp(prefix="asr_", suffix=suffix or ".bin")
-    tmp_path = Path(tmp_path_str)
+
+async def stream_to_disk(
+    read_chunk: Callable[[int], Awaitable[bytes]],
+    *,
+    filename: str | None,
+    upload_dir: Path,
+    max_bytes: int,
+) -> Path:
+    """Stream uploaded bytes asynchronously to a disk-backed temporary file.
+
+    Writing directly to disk in 1 MiB chunks via `aiofiles` keeps RAM overhead
+    near zero even when 10+ clients simultaneously upload 20 MB voice notes.
+    """
+    suffix = validate_audio_filename(filename)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    destination = upload_dir / f"asr_{uuid.uuid4().hex}{suffix}"
     total_bytes = 0
 
     try:
-        with os.fdopen(fd, "wb") as out_file:
-            while True:
-                chunk = await upload.read(READ_CHUNK_BYTES)
-                if not chunk:
-                    break
+        async with aiofiles.open(destination, "wb") as out_file:
+            while chunk := await read_chunk(UPLOAD_CHUNK_BYTES):
                 total_bytes += len(chunk)
                 if total_bytes > max_bytes:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                        detail=f"Audio file exceeds the {max_bytes // (1024 * 1024)} MB limit.",
+                    raise PayloadTooLargeError(
+                        f"Audio file exceeds the {max_bytes // (1024 * 1024)} MB limit."
                     )
-                out_file.write(chunk)
+                await out_file.write(chunk)
     except Exception:
-        tmp_path.unlink(missing_ok=True)
+        destination.unlink(missing_ok=True)
         raise
 
     if total_bytes == 0:
-        tmp_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded audio file is empty.",
-        )
+        destination.unlink(missing_ok=True)
+        raise InvalidAudioError("Uploaded audio file is empty.")
 
-    return tmp_path
+    return destination
+
+
+def cleanup_stale_uploads(upload_dir: Path) -> int:
+    """Remove orphaned upload scratch files left behind by an abrupt crash."""
+    if not upload_dir.exists():
+        return 0
+    removed = 0
+    for path in upload_dir.glob("asr_*"):
+        if path.is_file():
+            try:
+                path.unlink(missing_ok=True)
+                removed += 1
+            except OSError:
+                logger.warning("Failed to remove stale upload file '%s'.", path)
+    return removed
 
 
 def decode_audio_file(file_path: Path, sample_rate: int = SAMPLE_RATE) -> tuple[np.ndarray, float]:
@@ -105,28 +133,18 @@ def decode_audio_file(file_path: Path, sample_rate: int = SAMPLE_RATE) -> tuple[
             timeout=120,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="ffmpeg is not installed on the server.",
-        ) from exc
+        raise InvalidAudioError("ffmpeg is not installed on the server.") from exc
     except subprocess.TimeoutExpired as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Timed out while decoding audio file.",
-        ) from exc
+        raise InvalidAudioError("Timed out while decoding audio file.") from exc
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode("utf-8", errors="ignore").strip()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unable to decode audio file: {stderr or 'invalid or corrupted media'}",
+        raise InvalidAudioError(
+            f"Unable to decode audio file: {stderr or 'invalid or corrupted media'}"
         ) from exc
 
     waveform = np.frombuffer(proc.stdout, dtype=np.float32).copy()
     if waveform.size == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No audio samples found in the uploaded file.",
-        )
+        raise InvalidAudioError("No audio samples found in the uploaded file.")
 
     duration_seconds = round(float(waveform.size) / float(sample_rate), 3)
     return waveform, duration_seconds

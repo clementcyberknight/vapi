@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import tempfile
+from collections.abc import Iterator
+from pathlib import Path
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -10,64 +12,74 @@ from app.core.metrics import MetricsRegistry
 from app.main import create_app
 from app.schemas.transcription import TranscriptSegment
 from app.services.audio import SAMPLE_RATE
-from app.services.engine import ASREngine, TranscriptionOptions, TranscriptionResult
+from app.services.backends.base import ASRBackend, TranscriptionOptions
+from app.services.transcription import TranscriptionService
 
 
-class FakeASREngine(ASREngine):
-    """In-memory mock engine so CI and local tests never download model weights."""
+class FakeASRBackend(ASRBackend):
+    """In-memory mock backend so CI and local tests never download model weights."""
 
-    def __init__(self, settings: Settings, metrics: MetricsRegistry) -> None:
-        super().__init__(settings, metrics=metrics)
+    name = "ctranslate2"
+
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings)
         self.status = "ready"
         self.resolved_device = "cpu"
         self.resolved_compute_type = "int8"
-        self._fw_model = object()
 
-    async def transcribe(
+    @property
+    def is_ready(self) -> bool:
+        return self.status == "ready"
+
+    def load(self) -> None:
+        self.status = "ready"
+
+    def iter_segments(
         self,
         waveform: np.ndarray,
-        options: TranscriptionOptions | None = None,
-    ) -> TranscriptionResult:
-        opts = options or TranscriptionOptions()
+        options: TranscriptionOptions,
+    ) -> tuple[Iterator[TranscriptSegment], str | None]:
         duration = round(float(waveform.size) / float(SAMPLE_RATE), 3)
-        text = "How far, wetin dey happen today?"
-        segments = [TranscriptSegment(id=0, start=0.0, end=duration, text=text)]
-        return TranscriptionResult(
-            text=text,
-            segments=segments,
-            language=opts.language or "en",
-            duration_seconds=duration,
-            processing_time_seconds=0.05,
-            rtf=round(0.05 / duration, 4) if duration > 0 else 0.0,
-        )
 
-    async def stream_segments(
-        self,
-        waveform: np.ndarray,
-        options: TranscriptionOptions | None = None,
-    ) -> AsyncIterator[TranscriptSegment]:
-        yield TranscriptSegment(id=0, start=0.0, end=1.2, text="Good morning Lagos.")
-        yield TranscriptSegment(id=1, start=1.2, end=2.5, text="We are live and streaming.")
+        def _gen() -> Iterator[TranscriptSegment]:
+            if duration >= 2.4:
+                yield TranscriptSegment(id=0, start=0.0, end=1.2, text="Good morning Lagos.")
+                yield TranscriptSegment(id=1, start=1.2, end=duration, text="We are live and streaming.")
+            else:
+                yield TranscriptSegment(
+                    id=0,
+                    start=0.0,
+                    end=duration,
+                    text="How far, wetin dey happen today?",
+                )
+
+        return _gen(), (options.language or "en")
 
 
 def make_test_client(
     *,
     api_key: str | None = None,
     max_upload_size_mb: int = 25,
+    max_queued_requests: int = 20,
     stream_partial_interval_ms: int = 150,
     stream_silence_ms: int = 250,
     stream_min_speech_ms: int = 100,
+    tmp_dir: Path | None = None,
 ) -> TestClient:
+    upload_dir = tmp_dir or Path(tempfile.mkdtemp(prefix="asr_test_"))
     settings = Settings(
         preload_model=False,
         api_key=api_key,
         max_upload_size_mb=max_upload_size_mb,
+        max_queued_requests=max_queued_requests,
+        upload_tmp_dir=upload_dir,
         log_format="text",
         stream_partial_interval_ms=stream_partial_interval_ms,
         stream_silence_ms=stream_silence_ms,
         stream_min_speech_ms=stream_min_speech_ms,
     )
     metrics = MetricsRegistry()
-    engine = FakeASREngine(settings, metrics=metrics)
-    app = create_app(app_settings=settings, engine=engine, metrics=metrics)
+    backend = FakeASRBackend(settings)
+    service = TranscriptionService(settings, backend=backend, metrics=metrics)
+    app = create_app(app_settings=settings, transcription_service=service, metrics=metrics)
     return TestClient(app)

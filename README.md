@@ -11,7 +11,8 @@ A **fast, production-ready, open-source Speech-to-Text & Real-Time Audio Streami
 | **Incremental SSE Streaming** | `POST /api/v1/transcribe/stream` streams decoded segments via Server-Sent Events as soon as each segment completes. |
 | **OpenAI Drop-In Compatible** | `POST /v1/audio/transcriptions` supports `json`, `text`, `verbose_json`, `srt`, and `vtt` formats — works directly with the official OpenAI SDK. |
 | **Server-Side Model Caching** | Zero model weights baked into the Docker image or downloaded locally. Model weights persist in a Docker volume (`model_cache:/cache`). |
-| **Hardened Modern Docker** | BuildKit multi-stage `uv` build, non-root UID `10001`, `read_only` rootfs, `tmpfs` uploads, `cap_drop: [ALL]`, strict CPU/RAM/PID limits, and readiness probes. |
+| **High-Concurrency Low-RAM Uploads** | Streams uploads asynchronously via `aiofiles` to disk (`/cache/tmp`), queues up to `MAX_QUEUED_REQUESTS` (default `20`), and decodes audio **just-in-time inside the inference semaphore** — safely handling 10+ simultaneous 20 MB voice notes in 3 GB RAM. |
+| **Hardened Modern Docker** | BuildKit multi-stage `uv` build, non-root UID `10001`, `read_only` rootfs, disk-backed upload scratch, `cap_drop: [ALL]`, strict CPU/RAM/PID limits, and readiness probes. |
 | **Production Observability** | Structured JSON logs with `X-Request-ID`, `/health/live`, `/health/ready`, and Prometheus `/metrics` (including live Real-Time Factor). |
 
 ---

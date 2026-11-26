@@ -15,7 +15,7 @@ Thank you for your interest in contributing to the **Nigerian Accented English A
 
 ## Architecture Overview
 
-- `app/core/` — Configuration, structured logging, API key authentication, Prometheus metrics.
-- `app/services/` — Audio decoding (`audio.py`), CTranslate2 / Transformers inference (`engine.py`), and bounded-memory live streaming (`streaming.py`).
-- `app/api/` — Versioned HTTP, SSE, WebSocket, OpenAI-compatible, and health endpoints.
+- `app/core/` — Configuration, domain exceptions, structured logging, API key auth, Prometheus metrics.
+- `app/services/` — Framework-free audio streaming/decoding (`audio.py`), pluggable ASR backends (`backends/`), bounded-queue JIT orchestrator (`transcription.py`), and live streaming buffer (`streaming.py`).
+- `app/api/` — Standard FastAPI `Depends` injections (`dependencies.py`) and thin HTTP, SSE, WebSocket, OpenAI-compatible, and health endpoints.
 - `app/schemas/` — Pydantic v2 schemas and SRT/VTT formatters.
