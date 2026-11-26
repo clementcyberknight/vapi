@@ -1,0 +1,7 @@
+# Direct host-port publishing for local development or standalone VPS without a reverse proxy.
+# Usage: docker compose -f compose.yaml -f compose.local.yaml up -d --build
+
+services:
+  asr-api:
+    ports:
+      - "${HOST_PORT:-8080}:8000"

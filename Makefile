@@ -1,7 +1,10 @@
-.PHONY: up up-gpu down logs rebuild lint test
+.PHONY: up up-local up-gpu down logs rebuild lint test
 
 up:
 	docker compose up -d --build
+
+up-local:
+	docker compose -f compose.yaml -f compose.local.yaml up -d --build
 
 up-gpu:
 	docker compose -f compose.yaml -f compose.gpu.yaml up -d --build

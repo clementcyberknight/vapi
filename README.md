@@ -78,12 +78,17 @@ MAX_QUEUED_REQUESTS=20
 ### 3. Build & Run with Docker Compose
 
 ```bash
-# CPU server (default — lean CPU PyTorch + int8 CTranslate2)
+# Coolify / Dokploy / Traefik reverse-proxy server (uses internal `expose: "8000"` — zero host port conflicts)
 docker compose up -d --build
+
+# Standalone VPS or local machine without a reverse proxy (publishes HOST_PORT, default 8080 -> 8000)
+docker compose -f compose.yaml -f compose.local.yaml up -d --build
 
 # NVIDIA GPU server (requires NVIDIA Container Toolkit — CUDA + float16 CTranslate2)
 docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 ```
+
+> **Coolify Domain Routing**: In Coolify, open **Domains → Add domain**, select `asr-api`, and enter `https://your-domain.com:8000` (the `:8000` suffix tells Coolify's proxy which internal container port to forward to while public traffic uses standard HTTPS `443`).
 
 Monitor first-boot download and one-time CTranslate2 conversion:
 
