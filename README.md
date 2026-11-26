@@ -14,6 +14,7 @@ A **fast, production-ready, open-source Speech-to-Text & Real-Time Audio Streami
 | **Zero Local Model Downloads** | No weights are baked into the Docker image or downloaded locally. Models download and convert once on your server into the persistent `model_cache` Docker volume. |
 | **Hardened Modern Docker** | BuildKit multi-stage `uv` build, non-root `appuser` (UID `10001`), `read_only` rootfs, `cap_drop: [ALL]`, `no-new-privileges`, `pids_limit`, strict CPU/RAM limits, and readiness healthchecks. |
 | **Production Observability** | Structured JSON logs with `X-Request-ID`, `/health/live`, `/health/ready`, and Prometheus `/metrics` (RTF, active/queued counts, errors, and WebSocket streams). |
+| **Optional R2 Backup & Supabase Audit Log** | Zero-latency background backup of voice recordings to **Cloudflare R2** (`boto3` S3v4) and structured audit logging into **Supabase Postgres** (`acreate_client` + RLS-hardened schema). |
 
 ---
 
@@ -280,6 +281,31 @@ All variables match [app/core/config.py](./app/core/config.py) and [compose.yaml
 | `ENVIRONMENT` | `production` | `production` or `development`. |
 | `LOG_LEVEL` | `INFO` | Standard Python log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
 | `LOG_FORMAT` | `json` | `json` (structured logs with `request_id`) or `text`. |
+
+### Optional Cloudflare R2 Voice Backup & Supabase Logging
+
+Both integrations are **optional** and execute in the background after an `O(1)` file stage inside `/cache/tmp`, adding **0 ms** to user-facing transcription responses.
+
+1. **Supabase Table Setup**: Run [`supabase/migrations/20261126000000_create_voice_transcriptions.sql`](./supabase/migrations/20261126000000_create_voice_transcriptions.sql) in the Supabase SQL Editor (creates `public.voice_transcriptions` with `bigint identity` PK, indexes, and RLS enabled).
+2. **Cloudflare R2 Setup**: Create an R2 bucket and an R2 API token with **Object Write** permissions in the Cloudflare Dashboard.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `R2_ACCOUNT_ID` | *(empty)* | Cloudflare Account ID (builds `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`). |
+| `R2_ENDPOINT_URL` | *(empty)* | Optional explicit S3 endpoint URL override. |
+| `R2_ACCESS_KEY_ID` | *(empty)* | Cloudflare R2 S3 Access Key ID. |
+| `R2_SECRET_ACCESS_KEY` | *(empty)* | Cloudflare R2 S3 Secret Access Key. |
+| `R2_BUCKET_NAME` | *(empty)* | Target R2 bucket name. |
+| `R2_REGION` | `auto` | R2 region (`auto`, or jurisdictional hint such as `eu`). |
+| `R2_KEY_PREFIX` | `voices` | Object key prefix (`voices/YYYY/MM/DD/<request_id>_<filename>`). |
+| `R2_PUBLIC_BASE_URL` | *(empty)* | Optional custom domain / CDN base URL stored in `r2_url`. |
+| `SUPABASE_URL` | *(empty)* | Supabase project URL (`https://<project_ref>.supabase.co`). |
+| `SUPABASE_SECRET_KEY` | *(empty)* | Server-side Supabase Secret key (`sb_secret_...`) or `service_role` key (never expose to browsers). |
+| `SUPABASE_TABLE` | `voice_transcriptions` | Target Supabase table name. |
+| `ARCHIVE_CONCURRENCY` | `4` | Max concurrent background R2 uploads / Supabase upserts. |
+| `ARCHIVE_MAX_QUEUE_SIZE` | `64` | Max queued background archival tasks before shedding load during cloud outages. |
+| `ARCHIVE_MAX_RETRIES` | `3` | Retry attempts with exponential backoff + jitter for transient R2 / Supabase errors. |
+| `ARCHIVE_WEBSOCKET_SEGMENTS` | `true` | Also encode, upload, and log finalized `WS /api/v1/stream` segments. |
 
 ---
 

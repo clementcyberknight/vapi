@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from contextlib import asynccontextmanager, suppress
 from typing import Any
@@ -17,15 +18,26 @@ from app.core.exceptions import ASRError, ServiceBusyError
 from app.core.logging import configure_logging, request_id_ctx
 from app.core.metrics import MetricsRegistry
 from app.schemas.transcription import ErrorResponse
+from app.services.archival import ArchivalService
 from app.services.audio import cleanup_stale_uploads
 from app.services.transcription import TranscriptionService
 
 logger = logging.getLogger(__name__)
+_SAFE_REQ_ID_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+
+
+def _sanitize_request_id(raw_header: str | None) -> str:
+    """Sanitize caller-supplied X-Request-ID for safe idempotency keys, logs, and object paths."""
+    if not raw_header:
+        return uuid.uuid4().hex[:16]
+    cleaned = _SAFE_REQ_ID_RE.sub("", raw_header.strip()).strip("._-")[:64]
+    return cleaned or uuid.uuid4().hex[:16]
 
 
 def create_app(
     app_settings: Settings | None = None,
     transcription_service: TranscriptionService | None = None,
+    archival_service: ArchivalService | None = None,
     metrics: MetricsRegistry | None = None,
 ) -> FastAPI:
     cfg = app_settings or get_settings()
@@ -33,6 +45,7 @@ def create_app(
 
     metrics_registry = metrics or MetricsRegistry()
     service = transcription_service or TranscriptionService(cfg, metrics=metrics_registry)
+    archival = archival_service or ArchivalService(cfg, metrics=metrics_registry)
 
     async def _preload_safely() -> None:
         # Details are logged by the backend and exposed via /health/ready
@@ -43,6 +56,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         app.state.settings = cfg
         app.state.transcription_service = service
+        app.state.archival_service = archival
         app.state.metrics = metrics_registry
 
         removed = cleanup_stale_uploads(cfg.upload_tmp_dir)
@@ -63,6 +77,8 @@ def create_app(
         if preload_task and not preload_task.done():
             preload_task.cancel()
             await asyncio.gather(preload_task, return_exceptions=True)
+
+        await archival.aclose()
 
     app = FastAPI(
         title=cfg.app_name,
@@ -85,7 +101,7 @@ def create_app(
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next: Any):
-        req_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:16]
+        req_id = _sanitize_request_id(request.headers.get("X-Request-ID"))
         token = request_id_ctx.set(req_id)
         try:
             response = await call_next(request)

@@ -10,14 +10,17 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import (
+    ArchivalServiceDep,
     MetricsDep,
     SettingsDep,
     TranscriptionServiceDep,
     UploadedAudio,
     UploadedAudioDep,
 )
+from app.core.logging import request_id_ctx
 from app.core.security import verify_api_key
-from app.schemas.transcription import TranscriptionResponse
+from app.schemas.transcription import TranscriptionResponse, TranscriptSegment
+from app.services.archival import ArchiveMetadata
 from app.services.audio import stream_to_disk
 from app.services.backends import TranscriptionOptions
 
@@ -29,6 +32,7 @@ async def _transcribe_uploaded_audio(
     audio: UploadedAudio,
     settings: SettingsDep,
     service: TranscriptionServiceDep,
+    archival: ArchivalServiceDep,
     *,
     language: str | None,
     return_timestamps: bool,
@@ -46,6 +50,26 @@ async def _transcribe_uploaded_audio(
         initial_prompt=initial_prompt,
     )
     result = await service.transcribe_file(audio.path, options)
+    segments = result.segments if (return_timestamps or word_timestamps) else None
+
+    archival.enqueue_file(
+        audio.path,
+        ArchiveMetadata(
+            request_id=request_id_ctx.get(),
+            source="http",
+            original_filename=audio.filename,
+            content_type=audio.content_type,
+            model=settings.model_id,
+            engine=settings.engine,
+            language=result.language,
+            transcript_text=result.text,
+            duration_seconds=result.duration_seconds,
+            processing_time_seconds=result.processing_time_seconds,
+            rtf=result.rtf,
+            segments=segments,
+        ),
+    )
+
     return TranscriptionResponse(
         text=result.text,
         model=settings.model_id,
@@ -55,7 +79,7 @@ async def _transcribe_uploaded_audio(
         duration_seconds=result.duration_seconds,
         processing_time_seconds=result.processing_time_seconds,
         rtf=result.rtf,
-        segments=result.segments if (return_timestamps or word_timestamps) else None,
+        segments=segments,
     )
 
 
@@ -69,6 +93,7 @@ async def transcribe_v1(
     audio: UploadedAudioDep,
     settings: SettingsDep,
     service: TranscriptionServiceDep,
+    archival: ArchivalServiceDep,
     language: Annotated[
         str | None,
         Query(description="ISO language code (defaults to server setting, e.g. 'en')"),
@@ -86,6 +111,7 @@ async def transcribe_v1(
         audio,
         settings,
         service,
+        archival,
         language=language,
         return_timestamps=return_timestamps,
         word_timestamps=word_timestamps,
@@ -105,6 +131,7 @@ async def transcribe_alias(
     audio: UploadedAudioDep,
     settings: SettingsDep,
     service: TranscriptionServiceDep,
+    archival: ArchivalServiceDep,
     language: str | None = Query(default=None),
     return_timestamps: bool = Query(default=False),
     word_timestamps: bool = Query(default=False),
@@ -116,6 +143,7 @@ async def transcribe_alias(
         audio,
         settings,
         service,
+        archival,
         language=language,
         return_timestamps=return_timestamps,
         word_timestamps=word_timestamps,
@@ -133,6 +161,7 @@ async def transcribe_alias(
 async def transcribe_sse_stream(
     settings: SettingsDep,
     service: TranscriptionServiceDep,
+    archival: ArchivalServiceDep,
     metrics: MetricsDep,
     file: UploadFile = File(..., description="Voice recording to transcribe incrementally"),
     language: str | None = Query(default=None),
@@ -141,11 +170,7 @@ async def transcribe_sse_stream(
     vad_filter: bool | None = Query(default=None),
     initial_prompt: str | None = Query(default=None, max_length=500),
 ) -> StreamingResponse:
-    """Stream upload to disk, then decode JIT and yield segments live as SSE events.
-
-    Note: The StreamingResponse generator owns temp-file cleanup so the file stays
-    valid on disk until the async SSE stream completes or the client disconnects.
-    """
+    """Stream upload to disk, then decode JIT and yield segments live as SSE events."""
     service.ensure_accepting_requests()
     tmp_path = await stream_to_disk(
         file.read,
@@ -154,6 +179,8 @@ async def transcribe_sse_stream(
         max_bytes=settings.max_upload_bytes,
     )
     filename = file.filename or "audio"
+    content_type = file.content_type
+    req_id = request_id_ctx.get()
     await file.close()
 
     options = TranscriptionOptions(
@@ -168,20 +195,40 @@ async def transcribe_sse_stream(
 
     async def _event_generator() -> AsyncIterator[str]:
         t0 = time.perf_counter()
-        collected_texts: list[str] = []
+        collected_segments: list[TranscriptSegment] = []
         duration_seconds = 0.0
         try:
             async for seg, duration_s in service.stream_file_segments(tmp_path, options):
                 duration_seconds = duration_s
                 if seg is not None:
-                    collected_texts.append(seg.text)
+                    collected_segments.append(seg)
                     yield f"event: segment\ndata: {seg.model_dump_json()}\n\n"
 
             elapsed = round(time.perf_counter() - t0, 3)
             rtf = round(elapsed / duration_seconds, 4) if duration_seconds > 0 else 0.0
+            full_text = " ".join(s.text for s in collected_segments).strip()
             metrics.record_transcription(duration_seconds, elapsed)
+
+            archival.enqueue_file(
+                tmp_path,
+                ArchiveMetadata(
+                    request_id=req_id,
+                    source="sse",
+                    original_filename=filename,
+                    content_type=content_type,
+                    model=settings.model_id,
+                    engine=settings.engine,
+                    language=language or settings.default_language,
+                    transcript_text=full_text,
+                    duration_seconds=duration_seconds,
+                    processing_time_seconds=elapsed,
+                    rtf=rtf,
+                    segments=collected_segments,
+                ),
+            )
+
             done_payload = {
-                "text": " ".join(collected_texts).strip(),
+                "text": full_text,
                 "model": settings.model_id,
                 "engine": settings.engine,
                 "filename": filename,

@@ -68,6 +68,7 @@ def make_test_client(
 ) -> TestClient:
     upload_dir = tmp_dir or Path(tempfile.mkdtemp(prefix="asr_test_"))
     settings = Settings(
+        _env_file=None,
         preload_model=False,
         api_key=api_key,
         max_upload_size_mb=max_upload_size_mb,

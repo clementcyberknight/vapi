@@ -9,6 +9,7 @@ from fastapi import Depends, File, Request, UploadFile
 
 from app.core.config import Settings
 from app.core.metrics import MetricsRegistry
+from app.services.archival import ArchivalService
 from app.services.audio import stream_to_disk
 from app.services.transcription import TranscriptionService
 
@@ -19,6 +20,7 @@ class UploadedAudio:
 
     path: Path
     filename: str
+    content_type: str | None
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -29,12 +31,17 @@ def get_transcription_service(request: Request) -> TranscriptionService:
     return request.app.state.transcription_service
 
 
+def get_archival_service(request: Request) -> ArchivalService:
+    return request.app.state.archival_service
+
+
 def get_metrics(request: Request) -> MetricsRegistry:
     return request.app.state.metrics
 
 
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 TranscriptionServiceDep = Annotated[TranscriptionService, Depends(get_transcription_service)]
+ArchivalServiceDep = Annotated[ArchivalService, Depends(get_archival_service)]
 MetricsDep = Annotated[MetricsRegistry, Depends(get_metrics)]
 
 
@@ -55,7 +62,11 @@ async def receive_uploaded_audio(
         max_bytes=settings.max_upload_bytes,
     )
     try:
-        yield UploadedAudio(path=tmp_path, filename=file.filename or "audio")
+        yield UploadedAudio(
+            path=tmp_path,
+            filename=file.filename or "audio",
+            content_type=file.content_type,
+        )
     finally:
         tmp_path.unlink(missing_ok=True)
         await file.close()

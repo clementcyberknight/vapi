@@ -189,6 +189,99 @@ class Settings(BaseSettings):
         description="Structured JSON logs for production or readable text logs for dev",
     )
 
+    # Optional Cloudflare R2 Voice Backup (S3-compatible API)
+    r2_account_id: str | None = Field(
+        default=None,
+        description="Cloudflare account ID (used to build https://<ACCOUNT_ID>.r2.cloudflarestorage.com)",
+    )
+    r2_endpoint_url: str | None = Field(
+        default=None,
+        description="Optional explicit R2 S3 endpoint URL (overrides r2_account_id when set)",
+    )
+    r2_access_key_id: str | None = Field(
+        default=None,
+        description="Cloudflare R2 S3 API Access Key ID",
+    )
+    r2_secret_access_key: str | None = Field(
+        default=None,
+        description="Cloudflare R2 S3 API Secret Access Key",
+    )
+    r2_bucket_name: str | None = Field(
+        default=None,
+        description="Target Cloudflare R2 bucket name for voice backups",
+    )
+    r2_region: str = Field(
+        default="auto",
+        description="Cloudflare R2 region (must be 'auto' unless using jurisdictional buckets like 'eu')",
+    )
+    r2_key_prefix: str = Field(
+        default="voices",
+        description="Object key prefix inside the R2 bucket",
+    )
+    r2_public_base_url: str | None = Field(
+        default=None,
+        description="Optional custom public/CDN base URL for stored R2 objects",
+    )
+
+    # Optional Supabase Database Audit Logging
+    supabase_url: str | None = Field(
+        default=None,
+        description="Supabase project URL (e.g. https://<project_ref>.supabase.co)",
+    )
+    supabase_secret_key: str | None = Field(
+        default=None,
+        description="Supabase server-side Secret key (sb_secret_...) or service_role key",
+    )
+    supabase_table: str = Field(
+        default="voice_transcriptions",
+        description="Target Postgres table in Supabase for logging transcriptions",
+    )
+
+    # Background Archival Controls
+    archive_concurrency: int = Field(
+        default=4,
+        ge=1,
+        le=32,
+        description="Max concurrent background R2 uploads / Supabase upserts",
+    )
+    archive_max_queue_size: int = Field(
+        default=64,
+        ge=4,
+        le=1000,
+        description="Max pending background archival tasks before shedding load during cloud outages",
+    )
+    archive_max_retries: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Max retry attempts for transient R2 / Supabase network or 5xx errors",
+    )
+    archive_websocket_segments: bool = Field(
+        default=True,
+        description="Also back up and log finalized real-time WebSocket audio segments",
+    )
+
+    @property
+    def resolved_r2_endpoint(self) -> str | None:
+        if self.r2_endpoint_url:
+            return self.r2_endpoint_url.rstrip("/")
+        if self.r2_account_id:
+            return f"https://{self.r2_account_id}.r2.cloudflarestorage.com"
+        return None
+
+    @property
+    def r2_enabled(self) -> bool:
+        return bool(
+            self.resolved_r2_endpoint
+            and self.r2_access_key_id
+            and self.r2_secret_access_key
+            and self.r2_bucket_name
+        )
+
+    @property
+    def supabase_enabled(self) -> bool:
+        return bool(self.supabase_url and self.supabase_secret_key and self.supabase_table)
+
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024

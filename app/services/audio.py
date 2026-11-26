@@ -90,17 +90,18 @@ async def stream_to_disk(
 
 
 def cleanup_stale_uploads(upload_dir: Path) -> int:
-    """Remove orphaned upload scratch files left behind by an abrupt crash."""
+    """Remove orphaned upload and archive scratch files left behind by an abrupt crash."""
     if not upload_dir.exists():
         return 0
     removed = 0
-    for path in upload_dir.glob("asr_*"):
-        if path.is_file():
-            try:
-                path.unlink(missing_ok=True)
-                removed += 1
-            except OSError:
-                logger.warning("Failed to remove stale upload file '%s'.", path)
+    for pattern in ("asr_*", "arch_*"):
+        for path in upload_dir.glob(pattern):
+            if path.is_file():
+                try:
+                    path.unlink(missing_ok=True)
+                    removed += 1
+                except OSError:
+                    logger.warning("Failed to remove stale scratch file '%s'.", path)
     return removed
 
 

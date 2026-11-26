@@ -22,6 +22,7 @@ def _silence_pcm16(duration_s: float, sample_rate: int = SAMPLE_RATE) -> bytes:
 
 def test_streaming_session_endpointing_and_preroll() -> None:
     settings = Settings(
+        _env_file=None,
         preload_model=False,
         stream_min_speech_ms=200,
         stream_silence_ms=300,

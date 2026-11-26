@@ -18,6 +18,10 @@ class MetricsRegistry:
     active_transcriptions: int = 0
     queued_transcriptions: int = 0
     active_ws_connections: int = 0
+    r2_uploads_total: int = 0
+    supabase_logs_total: int = 0
+    archive_errors_total: int = 0
+    archive_dropped_total: int = 0
 
     def inc_queued(self) -> None:
         with self._lock:
@@ -63,6 +67,22 @@ class MetricsRegistry:
         with self._lock:
             self.rejected_requests_total += 1
 
+    def record_r2_upload(self) -> None:
+        with self._lock:
+            self.r2_uploads_total += 1
+
+    def record_supabase_log(self) -> None:
+        with self._lock:
+            self.supabase_logs_total += 1
+
+    def record_archive_error(self) -> None:
+        with self._lock:
+            self.archive_errors_total += 1
+
+    def record_archive_dropped(self) -> None:
+        with self._lock:
+            self.archive_dropped_total += 1
+
     def render_prometheus(self, model_ready: bool) -> str:
         with self._lock:
             avg_rtf = (
@@ -104,5 +124,17 @@ class MetricsRegistry:
                 "# HELP asr_active_ws_connections Currently active real-time WebSocket streams",
                 "# TYPE asr_active_ws_connections gauge",
                 f"asr_active_ws_connections {self.active_ws_connections}",
+                "# HELP asr_r2_uploads_total Total voice recordings backed up to Cloudflare R2",
+                "# TYPE asr_r2_uploads_total counter",
+                f"asr_r2_uploads_total {self.r2_uploads_total}",
+                "# HELP asr_supabase_logs_total Total transcription records logged to Supabase",
+                "# TYPE asr_supabase_logs_total counter",
+                f"asr_supabase_logs_total {self.supabase_logs_total}",
+                "# HELP asr_archive_errors_total Total failed R2 backup or Supabase log operations",
+                "# TYPE asr_archive_errors_total counter",
+                f"asr_archive_errors_total {self.archive_errors_total}",
+                "# HELP asr_archive_dropped_total Total archival tasks shed due to queue saturation",
+                "# TYPE asr_archive_dropped_total counter",
+                f"asr_archive_dropped_total {self.archive_dropped_total}",
             ]
             return "\n".join(lines) + "\n"

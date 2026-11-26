@@ -12,6 +12,7 @@ from app.core.config import Settings
 from app.core.metrics import MetricsRegistry
 from app.core.security import verify_ws_api_key
 from app.schemas.streaming import StreamConfigMessage, StreamControlMessage
+from app.services.archival import ArchivalService, ArchiveMetadata
 from app.services.backends import TranscriptionOptions
 from app.services.streaming import StreamingSession, UtteranceChunk
 from app.services.transcription import TranscriptionService
@@ -28,11 +29,13 @@ class WebSocketStreamController:
         websocket: WebSocket,
         settings: Settings,
         service: TranscriptionService,
+        archival: ArchivalService,
         metrics: MetricsRegistry,
     ) -> None:
         self._ws = websocket
         self._settings = settings
         self._service = service
+        self._archival = archival
         self._metrics = metrics
         self._session_id = uuid.uuid4().hex[:12]
         self._session = self._build_session_from_query()
@@ -91,6 +94,23 @@ class WebSocketStreamController:
             )
             self._metrics.record_stream_segment(result.duration_seconds, result.processing_time_seconds)
             if result.text:
+                self._archival.enqueue_waveform(
+                    chunk.waveform,
+                    ArchiveMetadata(
+                        request_id=f"{self._session_id}-{chunk.segment_id}",
+                        session_id=self._session_id,
+                        source="websocket",
+                        original_filename=f"stream_{self._session_id}_seg{chunk.segment_id}.wav",
+                        content_type="audio/wav",
+                        model=self._settings.model_id,
+                        engine=self._settings.engine,
+                        language=result.language,
+                        transcript_text=result.text,
+                        duration_seconds=result.duration_seconds,
+                        processing_time_seconds=result.processing_time_seconds,
+                        rtf=result.rtf,
+                    ),
+                )
                 await self._send_json(
                     {
                         "type": "final",
@@ -285,6 +305,7 @@ async def websocket_stream_audio(websocket: WebSocket) -> None:
     """
     settings: Settings = websocket.app.state.settings
     service: TranscriptionService = websocket.app.state.transcription_service
+    archival: ArchivalService = websocket.app.state.archival_service
     metrics: MetricsRegistry = websocket.app.state.metrics
 
     if not verify_ws_api_key(websocket, settings):
@@ -302,7 +323,7 @@ async def websocket_stream_audio(websocket: WebSocket) -> None:
     await websocket.accept()
     metrics.inc_active_ws()
     try:
-        controller = WebSocketStreamController(websocket, settings, service, metrics)
+        controller = WebSocketStreamController(websocket, settings, service, archival, metrics)
         await controller.run()
     finally:
         metrics.dec_active_ws()

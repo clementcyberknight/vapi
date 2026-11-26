@@ -5,9 +5,16 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Form
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
-from app.api.dependencies import SettingsDep, TranscriptionServiceDep, UploadedAudioDep
+from app.api.dependencies import (
+    ArchivalServiceDep,
+    SettingsDep,
+    TranscriptionServiceDep,
+    UploadedAudioDep,
+)
+from app.core.logging import request_id_ctx
 from app.core.security import verify_api_key
 from app.schemas.transcription import format_srt, format_vtt
+from app.services.archival import ArchiveMetadata
 from app.services.backends import TranscriptionOptions
 
 router = APIRouter(tags=["OpenAI Compatible"])
@@ -23,6 +30,7 @@ async def openai_audio_transcriptions(
     audio: UploadedAudioDep,
     settings: SettingsDep,
     service: TranscriptionServiceDep,
+    archival: ArchivalServiceDep,
     model: str | None = Form(default=None),
     language: str | None = Form(default=None),
     prompt: str | None = Form(default=None),
@@ -42,6 +50,24 @@ async def openai_audio_transcriptions(
         temperature=temperature,
     )
     result = await service.transcribe_file(audio.path, options)
+
+    archival.enqueue_file(
+        audio.path,
+        ArchiveMetadata(
+            request_id=request_id_ctx.get(),
+            source="openai",
+            original_filename=audio.filename,
+            content_type=audio.content_type,
+            model=settings.model_id,
+            engine=settings.engine,
+            language=result.language,
+            transcript_text=result.text,
+            duration_seconds=result.duration_seconds,
+            processing_time_seconds=result.processing_time_seconds,
+            rtf=result.rtf,
+            segments=result.segments if (want_segments or want_words) else None,
+        ),
+    )
 
     if response_format == "text":
         return PlainTextResponse(content=result.text)
