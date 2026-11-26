@@ -57,12 +57,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    pids_limit: 256
     deploy:
       resources:
         limits:
           cpus: "${CPU_LIMIT:-2.0}"
           memory: "${MEMORY_LIMIT:-3G}"
+          pids: 256
         reservations:
           cpus: "${CPU_RESERVATION:-0.5}"
           memory: "${MEMORY_RESERVATION:-1G}"
