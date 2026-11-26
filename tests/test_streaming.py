@@ -50,40 +50,41 @@ def test_streaming_session_endpointing_and_preroll() -> None:
 
 
 def test_websocket_realtime_streaming_protocol() -> None:
-    with make_test_client() as client:
-        with client.websocket_connect("/api/v1/stream?sample_rate=16000") as ws:
-            ready = ws.receive_json()
-            assert ready["type"] == "ready"
-            assert ready["encoding"] == "pcm_s16le"
+    with (
+        make_test_client() as client,
+        client.websocket_connect("/api/v1/stream?sample_rate=16000") as ws,
+    ):
+        ready = ws.receive_json()
+        assert ready["type"] == "ready"
+        assert ready["encoding"] == "pcm_s16le"
 
-            ws.send_json({"type": "ping"})
-            assert ws.receive_json() == {"type": "pong"}
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}
 
-            ws.send_json({"type": "config", "sample_rate": 16000, "language": "en", "interim_results": True})
-            cfg_ack = ws.receive_json()
-            assert cfg_ack["type"] == "configured"
+        ws.send_json({"type": "config", "sample_rate": 16000, "language": "en", "interim_results": True})
+        cfg_ack = ws.receive_json()
+        assert cfg_ack["type"] == "configured"
 
-            # Stream voiced audio followed by end control frame
-            ws.send_bytes(_tone_pcm16(0.35))
-            ws.send_json({"type": "end"})
+        # Stream voiced audio followed by end control frame
+        ws.send_bytes(_tone_pcm16(0.35))
+        ws.send_json({"type": "end"})
 
-            events = []
-            while True:
-                msg = ws.receive_json()
-                events.append(msg)
-                if msg["type"] == "done":
-                    break
+        events = []
+        while True:
+            msg = ws.receive_json()
+            events.append(msg)
+            if msg["type"] == "done":
+                break
 
-            event_types = [e["type"] for e in events]
-            assert "final" in event_types
-            assert event_types[-1] == "done"
+        event_types = [e["type"] for e in events]
+        assert "final" in event_types
+        assert event_types[-1] == "done"
 
 
 def test_websocket_rejects_unauthorized_when_api_key_set() -> None:
     with make_test_client(api_key="ws-secret") as client:
-        with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect("/api/v1/stream"):
-                pass
+        with pytest.raises(WebSocketDisconnect), client.websocket_connect("/api/v1/stream"):
+            pass
 
         with client.websocket_connect("/api/v1/stream?api_key=ws-secret") as ws:
             ready = ws.receive_json()

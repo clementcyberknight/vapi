@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -35,11 +35,9 @@ def create_app(
     service = transcription_service or TranscriptionService(cfg, metrics=metrics_registry)
 
     async def _preload_safely() -> None:
-        try:
+        # Details are logged by the backend and exposed via /health/ready
+        with suppress(Exception):
             await asyncio.to_thread(service.load_model)
-        except Exception:
-            # Details are logged by the backend and exposed via /health/ready
-            pass
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

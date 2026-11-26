@@ -47,7 +47,7 @@ class ErrorResponse(BaseModel):
 
 
 def _format_timestamp_srt(seconds: float) -> str:
-    ms_total = max(0, int(round(seconds * 1000)))
+    ms_total = max(0, round(seconds * 1000))
     hours, rem = divmod(ms_total, 3_600_000)
     minutes, rem = divmod(rem, 60_000)
     secs, ms = divmod(rem, 1000)

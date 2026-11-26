@@ -18,7 +18,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 
 # Install lean PyTorch wheel first (used for one-time server CT2 conversion or fallback),
 # then install faster-whisper / CTranslate2 / FastAPI dependencies without upgrading torch.
@@ -30,7 +30,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra-index-url "https://pypi.org/simple" \
         "torch>=2.6.0" \
     && uv pip install --python /app/.venv/bin/python \
-        --no-upgrade \
         -r pyproject.toml
 
 # ==============================================================================

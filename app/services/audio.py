@@ -175,7 +175,7 @@ def resample_linear(
     if source_rate == target_rate or waveform.size == 0:
         return waveform
     ratio = float(target_rate) / float(source_rate)
-    out_len = max(1, int(round(waveform.size * ratio)))
+    out_len = max(1, round(waveform.size * ratio))
     x_old = np.linspace(0.0, 1.0, num=waveform.size, endpoint=False)
     x_new = np.linspace(0.0, 1.0, num=out_len, endpoint=False)
     return np.interp(x_new, x_old, waveform).astype(np.float32)

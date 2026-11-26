@@ -13,8 +13,6 @@ venv
 tests
 examples
 Makefile
-README.md
-LICENSE
 CONTRIBUTING.md
 compose*.yaml
 Dockerfile

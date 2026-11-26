@@ -215,7 +215,7 @@ class TranscriptionService:
                     asyncio.run_coroutine_threadsafe(queue.put((seg, duration_s)), loop).result()
                 if not emitted:
                     asyncio.run_coroutine_threadsafe(queue.put((None, duration_s)), loop).result()
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 asyncio.run_coroutine_threadsafe(queue.put(exc), loop).result()
             finally:
                 asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
