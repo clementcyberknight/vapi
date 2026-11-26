@@ -20,24 +20,34 @@ services:
       ENGINE: "${ENGINE:-ctranslate2}"
       DEVICE: "${DEVICE:-auto}"
       COMPUTE_TYPE: "${COMPUTE_TYPE:-auto}"
-      DELETE_HF_SNAPSHOT_AFTER_CONVERT: "${DELETE_HF_SNAPSHOT_AFTER_CONVERT:-false}"
+      DELETE_HF_SNAPSHOT_AFTER_CONVERT: "${DELETE_HF_SNAPSHOT_AFTER_CONVERT:-true}"
       PRELOAD_MODEL: "${PRELOAD_MODEL:-true}"
       DEFAULT_LANGUAGE: "${DEFAULT_LANGUAGE:-en}"
-      BEAM_SIZE: "${BEAM_SIZE:-2}"
+      BEAM_SIZE: "${BEAM_SIZE:-5}"
+      PATIENCE: "${PATIENCE:-1.5}"
+      REPETITION_PENALTY: "${REPETITION_PENALTY:-1.1}"
+      NO_REPEAT_NGRAM_SIZE: "${NO_REPEAT_NGRAM_SIZE:-3}"
+      NORMALIZE_AUDIO: "${NORMALIZE_AUDIO:-true}"
       VAD_FILTER: "${VAD_FILTER:-true}"
+      VAD_THRESHOLD: "${VAD_THRESHOLD:-0.35}"
+      VAD_MIN_SPEECH_MS: "${VAD_MIN_SPEECH_MS:-200}"
+      VAD_MIN_SILENCE_MS: "${VAD_MIN_SILENCE_MS:-1000}"
+      VAD_SPEECH_PAD_MS: "${VAD_SPEECH_PAD_MS:-400}"
       ENABLE_BATCHED_INFERENCE: "${ENABLE_BATCHED_INFERENCE:-true}"
-      BATCH_SIZE: "${BATCH_SIZE:-4}"
-      CPU_THREADS: "${CPU_THREADS:-2}"
-      OMP_NUM_THREADS: "${CPU_THREADS:-2}"
-      MKL_NUM_THREADS: "${CPU_THREADS:-2}"
-      OPENBLAS_NUM_THREADS: "${CPU_THREADS:-2}"
+      BATCH_SIZE: "${BATCH_SIZE:-2}"
+      CPU_THREADS: "${CPU_THREADS:-4}"
+      OMP_NUM_THREADS: "${CPU_THREADS:-4}"
+      MKL_NUM_THREADS: "${CPU_THREADS:-4}"
+      OPENBLAS_NUM_THREADS: "${CPU_THREADS:-4}"
+      MALLOC_ARENA_MAX: "${MALLOC_ARENA_MAX:-2}"
+      CT2_USE_EXPERIMENTAL_PACKED_GEMM: "${CT2_USE_EXPERIMENTAL_PACKED_GEMM:-1}"
       NUM_WORKERS: "${NUM_WORKERS:-1}"
-      MAX_CONCURRENT_TRANSCRIPTIONS: "${MAX_CONCURRENT_TRANSCRIPTIONS:-2}"
+      MAX_CONCURRENT_TRANSCRIPTIONS: "${MAX_CONCURRENT_TRANSCRIPTIONS:-1}"
       MAX_QUEUED_REQUESTS: "${MAX_QUEUED_REQUESTS:-20}"
       QUEUE_TIMEOUT_SECONDS: "${QUEUE_TIMEOUT_SECONDS:-300.0}"
       MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-25}"
       UPLOAD_TMP_DIR: "/cache/tmp"
-      MAX_WS_CONNECTIONS: "${MAX_WS_CONNECTIONS:-16}"
+      MAX_WS_CONNECTIONS: "${MAX_WS_CONNECTIONS:-8}"
       STREAM_PARTIAL_INTERVAL_MS: "${STREAM_PARTIAL_INTERVAL_MS:-600}"
       STREAM_SILENCE_MS: "${STREAM_SILENCE_MS:-800}"
       STREAM_MAX_UTTERANCE_S: "${STREAM_MAX_UTTERANCE_S:-20.0}"
@@ -72,12 +82,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "${CPU_LIMIT:-2.0}"
+          cpus: "${CPU_LIMIT:-4.0}"
           memory: "${MEMORY_LIMIT:-3G}"
           pids: 256
         reservations:
-          cpus: "${CPU_RESERVATION:-0.5}"
-          memory: "${MEMORY_RESERVATION:-1G}"
+          cpus: "${CPU_RESERVATION:-1.0}"
+          memory: "${MEMORY_RESERVATION:-1536M}"
     healthcheck:
       test:
         [
@@ -89,7 +99,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 240s
     logging:
       driver: json-file
       options:

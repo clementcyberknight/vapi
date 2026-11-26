@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voice Model Tester — Live Stream & Voice Note</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f14;
+      --card: #131922;
+      --card-2: #0f141c;
+      --border: #263041;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #3b82f6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --blue-soft: #7dd3fc;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 1.5rem 1rem 3rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+      display: grid;
+      gap: 1.25rem;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin: 0;
+      letter-spacing: -0.01em;
+    }
+    .subtitle {
+      margin: 0.2rem 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--muted);
+    }
+    .badge.ok { border-color: rgba(34, 197, 94, 0.45); color: #86efac; background: rgba(34, 197, 94, 0.1); }
+    .badge.err { border-color: rgba(239, 68, 68, 0.45); color: #fca5a5; background: rgba(239, 68, 68, 0.1); }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.15rem 1.25rem;
+    }
+    .card h2 {
+      margin: 0 0 0.25rem;
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .card p.hint {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 0.75rem;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+    }
+    .row {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.6rem 1rem;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      color: #fff;
+      background: #2563eb;
+      transition: opacity 0.15s, transform 0.05s;
+    }
+    button:hover:not(:disabled) { opacity: 0.92; }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { opacity: 0.42; cursor: not-allowed; }
+    button.green { background: #16a34a; }
+    button.red { background: #dc2626; }
+    button.secondary {
+      background: var(--card-2);
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .tab-btn.active {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .meter-wrap {
+      height: 8px;
+      width: 100%;
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 0.75rem 0;
+    }
+    .meter-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #22c55e, #3b82f6, #f59e0b);
+      transition: width 60ms linear;
+    }
+    .status-line {
+      font-size: 0.84rem;
+      color: var(--muted);
+      margin: 0.45rem 0 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .transcript-box {
+      min-height: 180px;
+      padding: 1rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      font-size: 1rem;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .partial {
+      color: var(--blue-soft);
+      font-style: italic;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+    .stat {
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 0.55rem 0.75rem;
+    }
+    .stat .k { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; }
+    .stat .v { font-size: 0.95rem; font-weight: 700; margin-top: 0.1rem; }
+    .segments {
+      margin-top: 0.75rem;
+      display: grid;
+      gap: 0.35rem;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .seg {
+      display: flex;
+      gap: 0.65rem;
+      font-size: 0.86rem;
+      padding: 0.45rem 0.65rem;
+      border-radius: 8px;
+      background: var(--card-2);
+      border: 1px solid rgba(38, 48, 65, 0.7);
+    }
+    .seg time {
+      color: var(--blue-soft);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem;
+      white-space: nowrap;
+      padding-top: 0.1rem;
+    }
+    audio {
+      width: 100%;
+      margin: 0.75rem 0;
+      height: 38px;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1rem 0;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .log-box {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 8px;
+      background: #090d12;
+      border: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem;
+      color: #9ca3af;
+      max-height: 130px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Nigerian Accented English — Voice API Tester</h1>
+        <p class="subtitle">Test both real-time WebSocket streaming and normal voice-note recording / file upload.</p>
+      </div>
+      <div id="healthBadge" class="badge">
+        <span class="dot"></span>
+        <span id="healthText">Not checked</span>
+      </div>
+    </header>
+
+    <!-- Connection Settings -->
+    <section class="card">
+      <h2>Connection</h2>
+      <p class="hint">Pre-filled with your live Coolify endpoint. Settings are saved locally in your browser.</p>
+      <div class="grid-2">
+        <div class="field">
+          <label for="baseUrl">API Base URL</label>
+          <input id="baseUrl" type="url" value="https://voice.code-like-a.monster" placeholder="https://voice.code-like-a.monster" />
+        </div>
+        <div class="field">
+          <label for="apiKey">API Key (Optional if auth disabled)</label>
+          <input id="apiKey" type="password" placeholder="Enter X-API-Key if configured" />
+        </div>
+      </div>
+      <div class="grid-2" style="margin-top: 0.75rem;">
+        <div class="field">
+          <label for="initialPrompt">Domain Prompt Hint (Optional)</label>
+          <input id="initialPrompt" type="text" placeholder="e.g. Naira, transfer, Chowdeck, Lagos, account balance" />
+        </div>
+        <div class="field">
+          <label for="language">Language</label>
+          <select id="language">
+            <option value="en" selected>English (en — fastest)</option>
+            <option value="">Auto-detect</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top: 0.85rem;">
+        <button id="checkHealthBtn" class="secondary">Check /health/ready</button>
+        <span id="healthDetail" style="font-size: 0.82rem; color: var(--muted);"></span>
+      </div>
+    </section>
+
+    <!-- Main Test Tabs -->
+    <section class="card">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="live">1. Live Real-Time Mic (WebSocket)</button>
+        <button class="tab-btn" data-tab="voice">2. Normal Voice Note &amp; File Upload (HTTP)</button>
+      </div>
+
+      <!-- TAB 1: LIVE STREAMING -->
+      <div id="tab-live" class="panel active">
+        <h2>Real-Time Live Transcription <code style="font-size:0.8rem;color:var(--muted);">WSS /api/v1/stream</code></h2>
+        <p class="hint">Streams 16 kHz mono PCM16 directly from your microphone. Blue italic = live interim text; white = finalized text.</p>
+
+        <div class="row">
+          <button id="liveStartBtn" class="green">Start Live Mic</button>
+          <button id="liveFlushBtn" class="secondary" disabled>Flush Utterance</button>
+          <button id="liveStopBtn" class="red" disabled>Stop &amp; Finalize</button>
+          <button id="liveClearBtn" class="secondary">Clear</button>
+        </div>
+
+        <div class="meter-wrap"><div id="liveMeter" class="meter-bar"></div></div>
+        <div class="status-line">
+          <span id="liveStatus">Idle</span>
+          <span id="liveStats">0 segments</span>
+        </div>
+
+        <div class="transcript-box" id="liveBox"><span id="liveFinal"></span><span id="livePartial" class="partial"></span></div>
+        <div class="log-box" id="liveLog">WebSocket events will appear here...</div>
+      </div>
+
+      <!-- TAB 2: VOICE NOTE RECORD & SEND + FILE UPLOAD -->
+      <div id="tab-voice" class="panel">
+        <h2>Record Voice Note &amp; Send <code style="font-size:0.8rem;color:var(--muted);">POST /api/v1/transcribe</code></h2>
+        <p class="hint">Record a normal voice note like WhatsApp, preview it, then send it to your API — or upload any audio file.</p>
+
+        <div class="row">
+          <button id="recStartBtn" class="green">Record Voice Note</button>
+          <button id="recStopBtn" class="red" disabled>Stop Recording</button>
+          <button id="recSendBtn" disabled>Send Voice Note</button>
+          <span id="recTimer" style="font-family: ui-monospace, monospace; font-size: 0.9rem; color: var(--muted);">00:00</span>
+        </div>
+
+        <audio id="audioPreview" controls style="display: none;"></audio>
+
+        <div class="divider">OR upload an audio file (.m4a, .mp3, .wav, .ogg, .webm, .opus)</div>
+
+        <div class="row">
+          <input id="fileInput" type="file" accept="audio/*,.m4a,.mp3,.wav,.ogg,.opus,.webm,.flac,.aac,.amr" style="flex: 1;" />
+          <button id="fileSendBtn" disabled>Upload &amp; Transcribe</button>
+        </div>
+
+        <div class="status-line" style="margin-top: 0.85rem;">
+          <span id="voiceStatus">Ready to record or upload.</span>
+          <button id="copyVoiceBtn" class="secondary" style="padding: 0.3rem 0.65rem; font-size: 0.78rem;" disabled>Copy Text</button>
+        </div>
+
+        <div class="transcript-box" id="voiceResult" style="min-height: 120px;"></div>
+
+        <div class="meta-grid" id="voiceMeta" style="display: none;">
+          <div class="stat"><div class="k">Audio Duration</div><div class="v" id="metaDuration">-</div></div>
+          <div class="stat"><div class="k">Inference Time</div><div class="v" id="metaProc">-</div></div>
+          <div class="stat"><div class="k">Real-Time Factor</div><div class="v" id="metaRtf">-</div></div>
+          <div class="stat"><div class="k">Engine</div><div class="v" id="metaEngine">-</div></div>
+        </div>
+
+        <div class="segments" id="voiceSegments"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ---------- Shared Settings & Helpers ----------
+    const baseUrlInput = document.getElementById("baseUrl");
+    const apiKeyInput = document.getElementById("apiKey");
+    const promptInput = document.getElementById("initialPrompt");
+    const langSelect = document.getElementById("language");
+    const healthBadge = document.getElementById("healthBadge");
+    const healthText = document.getElementById("healthText");
+    const healthDetail = document.getElementById("healthDetail");
+    const checkHealthBtn = document.getElementById("checkHealthBtn");
+
+    // Restore saved settings
+    if (localStorage.getItem("vm_baseUrl")) baseUrlInput.value = localStorage.getItem("vm_baseUrl");
+    if (localStorage.getItem("vm_apiKey")) apiKeyInput.value = localStorage.getItem("vm_apiKey");
+    if (localStorage.getItem("vm_prompt")) promptInput.value = localStorage.getItem("vm_prompt");
+
+    [baseUrlInput, apiKeyInput, promptInput].forEach((el) => {
+      el.addEventListener("change", () => {
+        localStorage.setItem("vm_baseUrl", baseUrlInput.value.trim());
+        localStorage.setItem("vm_apiKey", apiKeyInput.value.trim());
+        localStorage.setItem("vm_prompt", promptInput.value.trim());
+      });
+    });
+
+    function getBaseUrl() {
+      return baseUrlInput.value.trim().replace(/\/+$/, "");
+    }
+
+    function getWsBaseUrl() {
+      const base = getBaseUrl();
+      if (base.startsWith("https://")) return "wss://" + base.slice("https://".length);
+      if (base.startsWith("http://")) return "ws://" + base.slice("http://".length);
+      return base;
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = (sec % 60).toFixed(1).padStart(4, "0");
+      return `${String(m).padStart(2, "0")}:${s}`;
+    }
+
+    // Tabs
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    // ---------- Health Check ----------
+    async function checkHealth() {
+      healthBadge.className = "badge";
+      healthText.textContent = "Checking...";
+      healthDetail.textContent = "";
+      try {
+        const t0 = performance.now();
+        const res = await fetch(`${getBaseUrl()}/health/ready`, { cache: "no-store" });
+        const ms = Math.round(performance.now() - t0);
+        const data = await res.json();
+        if (res.ok && data.status === "ready") {
+          healthBadge.className = "badge ok";
+          healthText.textContent = `Ready (${ms} ms)`;
+          healthDetail.textContent = `${data.model} • ${data.engine} (${data.device}/${data.compute_type})`;
+        } else {
+          healthBadge.className = "badge err";
+          healthText.textContent = `Not Ready (${res.status})`;
+          healthDetail.textContent = data.error || data.model_status || JSON.stringify(data);
+        }
+      } catch (err) {
+        healthBadge.className = "badge err";
+        healthText.textContent = "Unreachable / CORS Error";
+        healthDetail.textContent = err.message;
+      }
+    }
+
+    checkHealthBtn.addEventListener("click", checkHealth);
+    checkHealth();
+
+    // ---------- TAB 1: Live WebSocket Streaming ----------
+    const liveStartBtn = document.getElementById("liveStartBtn");
+    const liveFlushBtn = document.getElementById("liveFlushBtn");
+    const liveStopBtn = document.getElementById("liveStopBtn");
+    const liveClearBtn = document.getElementById("liveClearBtn");
+    const liveMeter = document.getElementById("liveMeter");
+    const liveStatus = document.getElementById("liveStatus");
+    const liveStats = document.getElementById("liveStats");
+    const liveFinal = document.getElementById("liveFinal");
+    const livePartial = document.getElementById("livePartial");
+    const liveLog = document.getElementById("liveLog");
+
+    let ws = null;
+    let audioCtx = null;
+    let micStream = null;
+    let processor = null;
+    let segmentCount = 0;
+
+    function logWs(msg) {
+      const ts = new Date().toLocaleTimeString();
+      liveLog.textContent = `[${ts}] ${msg}\n` + liveLog.textContent;
+    }
+
+    function downsampleTo16k(float32, inputRate) {
+      if (inputRate === 16000) return float32;
+      const ratio = inputRate / 16000;
+      const newLen = Math.round(float32.length / ratio);
+      const out = new Float32Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        out[i] = float32[Math.min(Math.round(i * ratio), float32.length - 1)];
+      }
+      return out;
+    }
+
+    function float32ToPcm16(float32) {
+      const buf = new ArrayBuffer(float32.length * 2);
+      const view = new DataView(buf);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      return buf;
+    }
+
+    function cleanupLiveAudio() {
+      if (processor) { processor.disconnect(); processor = null; }
+      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+      if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+      liveMeter.style.width = "0%";
+    }
+
+    liveStartBtn.addEventListener("click", async () => {
+      try {
+        liveStatus.textContent = "Requesting microphone access...";
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, noiseSuppression: true, echoCancellation: true, autoGainControl: true },
+        });
+      } catch (err) {
+        liveStatus.textContent = `Microphone error: ${err.message}`;
+        logWs(`Mic denied: ${err.message}`);
+        return;
+      }
+
+      const url = new URL(`${getWsBaseUrl()}/api/v1/stream`);
+      url.searchParams.set("sample_rate", "16000");
+      url.searchParams.set("interim_results", "true");
+      if (langSelect.value) url.searchParams.set("language", langSelect.value);
+      if (promptInput.value.trim()) url.searchParams.set("initial_prompt", promptInput.value.trim());
+      if (apiKeyInput.value.trim()) url.searchParams.set("api_key", apiKeyInput.value.trim());
+
+      liveStatus.textContent = "Connecting WebSocket...";
+      logWs(`Connecting to ${url.origin}${url.pathname}`);
+
+      ws = new WebSocket(url.toString());
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = () => {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(micStream);
+        processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+        processor.onaudioprocess = (e) => {
+          const input = e.inputBuffer.getChannelData(0);
+          // Simple RMS volume meter
+          let sum = 0;
+          for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+          const rms = Math.sqrt(sum / input.length);
+          liveMeter.style.width = Math.min(100, Math.round(rms * 450)) + "%";
+
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const down = downsampleTo16k(input, audioCtx.sampleRate);
+            ws.send(float32ToPcm16(down));
+          }
+        };
+
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+
+        liveStatus.textContent = "Listening — speak now...";
+        liveStartBtn.disabled = true;
+        liveFlushBtn.disabled = false;
+        liveStopBtn.disabled = false;
+        logWs(`Connected (audioCtx=${audioCtx.sampleRate}Hz -> 16000Hz PCM16)`);
+      };
+
+      ws.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === "ready") {
+          logWs(`Session ready: ${msg.session_id} (${msg.engine})`);
+        } else if (msg.type === "partial") {
+          livePartial.textContent = (liveFinal.textContent ? " " : "") + msg.text;
+        } else if (msg.type === "final") {
+          segmentCount++;
+          livePartial.textContent = "";
+          liveFinal.textContent += (liveFinal.textContent ? " " : "") + msg.text;
+          liveStats.textContent = `${segmentCount} segment(s) • last ${msg.processing_time_seconds}s`;
+          logWs(`FINAL #${msg.segment_id} (${msg.duration_seconds}s audio in ${msg.processing_time_seconds}s): ${msg.text}`);
+        } else if (msg.type === "done") {
+          liveStatus.textContent = `Completed (${msg.total_segments} segments, ${msg.total_audio_seconds}s audio)`;
+          logWs(`Done: ${msg.total_segments} segments, ${msg.total_audio_seconds}s total`);
+        } else if (msg.type === "error") {
+          liveStatus.textContent = `Server error: ${msg.message}`;
+          logWs(`ERROR [${msg.code}]: ${msg.message}`);
+        }
+      };
+
+      ws.onerror = () => {
+        liveStatus.textContent = "WebSocket error (check API key, URL, or console).";
+        logWs("WebSocket error event");
+      };
+
+      ws.onclose = (ev) => {
+        cleanupLiveAudio();
+        liveStartBtn.disabled = false;
+        liveFlushBtn.disabled = true;
+        liveStopBtn.disabled = true;
+        if (ev.code !== 1000) {
+          liveStatus.textContent = `Disconnected (code ${ev.code}${ev.reason ? ": " + ev.reason : ""})`;
+        }
+        logWs(`Closed (code=${ev.code}, reason=${ev.reason || "none"})`);
+      };
+    });
+
+    liveFlushBtn.addEventListener("click", () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "flush" }));
+        logWs("Sent flush");
+      }
+    });
+
+    liveStopBtn.addEventListener("click", () => {
+      cleanupLiveAudio();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "end" }));
+        liveStatus.textContent = "Finalizing remaining audio...";
+      }
+      liveFlushBtn.disabled = true;
+      liveStopBtn.disabled = true;
+    });
+
+    liveClearBtn.addEventListener("click", () => {
+      liveFinal.textContent = "";
+      livePartial.textContent = "";
+      segmentCount = 0;
+      liveStats.textContent = "0 segments";
+      liveLog.textContent = "";
+    });
+
+    // ---------- TAB 2: Normal Voice Note (Record & Send) + File Upload ----------
+    const recStartBtn = document.getElementById("recStartBtn");
+    const recStopBtn = document.getElementById("recStopBtn");
+    const recSendBtn = document.getElementById("recSendBtn");
+    const recTimer = document.getElementById("recTimer");
+    const audioPreview = document.getElementById("audioPreview");
+    const fileInput = document.getElementById("fileInput");
+    const fileSendBtn = document.getElementById("fileSendBtn");
+    const voiceStatus = document.getElementById("voiceStatus");
+    const voiceResult = document.getElementById("voiceResult");
+    const voiceMeta = document.getElementById("voiceMeta");
+    const voiceSegments = document.getElementById("voiceSegments");
+    const copyVoiceBtn = document.getElementById("copyVoiceBtn");
+
+    let mediaRecorder = null;
+    let recStream = null;
+    let recChunks = [];
+    let recordedBlob = null;
+    let recordedExt = "webm";
+    let timerHandle = null;
+    let recStartTime = 0;
+
+    function pickMimeType() {
+      const types = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+      return types.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+    }
+
+    recStartBtn.addEventListener("click", async () => {
+      try {
+        recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        voiceStatus.textContent = `Microphone error: ${err.message}`;
+        return;
+      }
+
+      recChunks = [];
+      recordedBlob = null;
+      const mimeType = pickMimeType();
+      recordedExt = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+      mediaRecorder = mimeType ? new MediaRecorder(recStream, { mimeType }) : new MediaRecorder(recStream);
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        clearInterval(timerHandle);
+        recStream.getTracks().forEach((t) => t.stop());
+        recordedBlob = new Blob(recChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        audioPreview.src = URL.createObjectURL(recordedBlob);
+        audioPreview.style.display = "block";
+        recSendBtn.disabled = false;
+        voiceStatus.textContent = `Recorded ${(recordedBlob.size / 1024).toFixed(1)} KB (${recordedExt}). Click "Send Voice Note" to transcribe.`;
+      };
+
+      mediaRecorder.start(250);
+      recStartTime = Date.now();
+      recTimer.textContent = "00:00";
+      timerHandle = setInterval(() => {
+        const s = Math.floor((Date.now() - recStartTime) / 1000);
+        recTimer.textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+      }, 250);
+
+      recStartBtn.disabled = true;
+      recStopBtn.disabled = false;
+      recSendBtn.disabled = true;
+      voiceStatus.textContent = "Recording voice note...";
+    });
+
+    recStopBtn.addEventListener("click", () => {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+      }
+      recStartBtn.disabled = false;
+      recStopBtn.disabled = true;
+    });
+
+    fileInput.addEventListener("change", () => {
+      fileSendBtn.disabled = !fileInput.files || fileInput.files.length === 0;
+    });
+
+    async function sendAudioForTranscription(fileOrBlob, filename) {
+      const url = new URL(`${getBaseUrl()}/api/v1/transcribe`);
+      url.searchParams.set("return_timestamps", "true");
+      if (langSelect.value) url.searchParams.set("language", langSelect.value);
+      if (promptInput.value.trim()) url.searchParams.set("initial_prompt", promptInput.value.trim());
+
+      const form = new FormData();
+      form.append("file", fileOrBlob, filename);
+
+      const headers = {};
+      if (apiKeyInput.value.trim()) headers["X-API-Key"] = apiKeyInput.value.trim();
+
+      voiceStatus.textContent = `Uploading ${filename} (${(fileOrBlob.size / 1024).toFixed(1)} KB) and transcribing...`;
+      voiceResult.textContent = "";
+      voiceSegments.innerHTML = "";
+      voiceMeta.style.display = "none";
+      copyVoiceBtn.disabled = true;
+      recSendBtn.disabled = true;
+      fileSendBtn.disabled = true;
+
+      try {
+        const t0 = performance.now();
+        const res = await fetch(url.toString(), { method: "POST", headers, body: form });
+        const totalMs = ((performance.now() - t0) / 1000).toFixed(2);
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+        }
+
+        voiceResult.textContent = data.text || "(No speech detected)";
+        copyVoiceBtn.disabled = !data.text;
+        voiceStatus.textContent = `Transcribed in ${totalMs}s round-trip (server inference: ${data.processing_time_seconds}s)`;
+
+        document.getElementById("metaDuration").textContent = `${data.duration_seconds}s`;
+        document.getElementById("metaProc").textContent = `${data.processing_time_seconds}s`;
+        document.getElementById("metaRtf").textContent = `${data.rtf}x`;
+        document.getElementById("metaEngine").textContent = data.engine;
+        voiceMeta.style.display = "grid";
+
+        if (Array.isArray(data.segments) && data.segments.length > 0) {
+          voiceSegments.innerHTML = data.segments
+            .map(
+              (seg) =>
+                `<div class="seg"><time>${formatTime(seg.start)} → ${formatTime(seg.end)}</time><span>${escapeHtml(seg.text)}</span></div>`
+            )
+            .join("");
+        }
+      } catch (err) {
+        voiceStatus.textContent = `Error: ${err.message}`;
+      } finally {
+        recSendBtn.disabled = !recordedBlob;
+        fileSendBtn.disabled = !fileInput.files || fileInput.files.length === 0;
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    recSendBtn.addEventListener("click", () => {
+      if (recordedBlob) sendAudioForTranscription(recordedBlob, `voice-note.${recordedExt}`);
+    });
+
+    fileSendBtn.addEventListener("click", () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (f) sendAudioForTranscription(f, f.name);
+    });
+
+    copyVoiceBtn.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(voiceResult.textContent);
+      copyVoiceBtn.textContent = "Copied!";
+      setTimeout(() => (copyVoiceBtn.textContent = "Copy Text"), 1200);
+    });
+  </script>
+</body>
+</html>

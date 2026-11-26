@@ -13,6 +13,7 @@ from app.core.metrics import MetricsRegistry
 from app.core.security import verify_ws_api_key
 from app.schemas.streaming import StreamConfigMessage, StreamControlMessage
 from app.services.archival import ArchivalService, ArchiveMetadata
+from app.services.audio import normalize_speech_waveform
 from app.services.backends import TranscriptionOptions
 from app.services.streaming import StreamingSession, UtteranceChunk
 from app.services.transcription import TranscriptionService
@@ -80,20 +81,28 @@ class WebSocketStreamController:
         if self._latest_partial is not None and self._latest_partial.segment_id <= chunk.segment_id:
             self._latest_partial = None
 
+        waveform = (
+            normalize_speech_waveform(chunk.waveform)
+            if self._settings.normalize_audio
+            else chunk.waveform
+        )
         try:
             result = await self._service.transcribe_waveform(
-                chunk.waveform,
+                waveform,
                 TranscriptionOptions(
                     language=self._session.language,
                     beam_size=self._settings.beam_size,
+                    patience=self._settings.patience,
                     vad_filter=self._settings.vad_filter,
                     return_timestamps=False,
-                    initial_prompt=self._session.initial_prompt,
+                    initial_prompt=self._session.effective_prompt(),
+                    temperature=None,
                     use_batched=False,
                 ),
             )
             self._metrics.record_stream_segment(result.duration_seconds, result.processing_time_seconds)
             if result.text:
+                self._session.record_final_text(result.text)
                 self._archival.enqueue_waveform(
                     chunk.waveform,
                     ArchiveMetadata(
@@ -126,15 +135,22 @@ class WebSocketStreamController:
             await self._send_json({"type": "error", "code": "inference_error", "message": str(exc)})
 
     async def _process_partial_chunk(self, chunk: UtteranceChunk) -> None:
+        waveform = (
+            normalize_speech_waveform(chunk.waveform)
+            if self._settings.normalize_audio
+            else chunk.waveform
+        )
         try:
             result = await self._service.transcribe_waveform(
-                chunk.waveform,
+                waveform,
                 TranscriptionOptions(
                     language=self._session.language,
                     beam_size=1,
+                    patience=1.0,
                     vad_filter=False,
                     return_timestamps=False,
-                    initial_prompt=self._session.initial_prompt,
+                    initial_prompt=self._session.effective_prompt(),
+                    temperature=0.0,
                     use_batched=False,
                 ),
             )

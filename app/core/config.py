@@ -39,9 +39,12 @@ class Settings(BaseSettings):
         default="auto",
         description="Target execution device",
     )
-    compute_type: Literal["auto", "int8", "int8_float16", "float16", "float32"] = Field(
+    compute_type: Literal["auto", "int8", "int8_float16", "int16", "float16", "float32"] = Field(
         default="auto",
-        description="Quantization/compute precision (auto -> int8 on CPU, float16 on CUDA)",
+        description=(
+            "Quantization/compute precision "
+            "(auto -> float32 on CPU for lossless fine-tune accuracy, float16 on CUDA)"
+        ),
     )
     cache_dir: Path = Field(
         default=Path("/cache"),
@@ -52,7 +55,7 @@ class Settings(BaseSettings):
         description="Disk-backed directory for streaming uploaded audio files (avoids RAM pressure)",
     )
     delete_hf_snapshot_after_convert: bool = Field(
-        default=False,
+        default=True,
         description="Delete raw HF weights after CTranslate2 conversion to save disk space",
     )
     preload_model: bool = Field(
@@ -60,36 +63,76 @@ class Settings(BaseSettings):
         description="Download, convert, and load the model during server startup",
     )
 
-    # Decoding & Speed Tuning
+    # Decoding, Accuracy & Speed Tuning
     default_language: str | None = Field(
         default="en",
         description="Default language code (setting 'en' skips language-detection overhead)",
     )
     beam_size: int = Field(
-        default=2,
+        default=5,
         ge=1,
         le=10,
-        description="Beam search width for final transcriptions (1=fastest greedy, 5=max accuracy)",
+        description="Beam search width for final transcriptions (5=OpenAI accuracy standard, 1=fastest greedy)",
+    )
+    patience: float = Field(
+        default=1.5,
+        ge=1.0,
+        le=3.0,
+        description="Beam search patience factor (>1.0 explores more hypotheses for higher accuracy)",
+    )
+    repetition_penalty: float = Field(
+        default=1.1,
+        ge=1.0,
+        le=2.0,
+        description="Penalizes repeated token loops common in fine-tuned Whisper checkpoints",
+    )
+    no_repeat_ngram_size: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description="Prevents repeating token n-grams of this size (0 disables)",
+    )
+    normalize_audio: bool = Field(
+        default=True,
+        description="Apply 80 Hz high-pass rumble filter and spike-resistant speech normalization",
     )
     vad_filter: bool = Field(
         default=True,
         description="Enable Silero VAD to strip silence and speed up transcription",
     )
+    vad_threshold: float = Field(
+        default=0.35,
+        ge=0.05,
+        le=0.95,
+        description="Silero VAD speech probability threshold (0.35 catches quiet/accented speech reliably)",
+    )
+    vad_min_speech_ms: int = Field(
+        default=200,
+        ge=50,
+        le=2000,
+        description="Minimum speech segment duration (ms) kept by Silero VAD",
+    )
     vad_min_silence_ms: int = Field(
-        default=500,
+        default=1000,
         ge=100,
         le=5000,
-        description="Minimum silence duration (ms) for VAD segmentation",
+        description="Minimum silence duration (ms) for VAD segmentation (1000ms avoids chopping mid-sentence pauses)",
+    )
+    vad_speech_pad_ms: int = Field(
+        default=400,
+        ge=0,
+        le=2000,
+        description="Padding (ms) kept around VAD speech segments so first/last syllables are never clipped",
     )
     enable_batched_inference: bool = Field(
         default=True,
         description="Use faster-whisper BatchedInferencePipeline for long audio files",
     )
     batch_size: int = Field(
-        default=4,
+        default=2,
         ge=1,
         le=64,
-        description="Batch size for batched/chunked inference",
+        description="Batch size for batched/chunked inference (2 keeps peak RAM safely under 3 GB)",
     )
     chunk_length_s: int = Field(
         default=30,
@@ -98,12 +141,12 @@ class Settings(BaseSettings):
         description="Chunk size in seconds for long audio",
     )
 
-    # Concurrency, Queuing & Resource Guardrails
+    # Concurrency, Queuing & Resource Guardrails (tuned for 6-core AMD EPYC AVX2, 3 GB hard cap)
     cpu_threads: int = Field(
-        default=2,
+        default=4,
         ge=1,
         le=64,
-        description="Intra-op CPU threads (match your Docker CPU_LIMIT)",
+        description="Intra-op CPU threads (match Docker CPU_LIMIT; 4 threads on 6-core VPS)",
     )
     num_workers: int = Field(
         default=1,
@@ -112,10 +155,10 @@ class Settings(BaseSettings):
         description="CTranslate2 parallel worker replicas inside the process",
     )
     max_concurrent_transcriptions: int = Field(
-        default=2,
+        default=1,
         ge=1,
         le=32,
-        description="Maximum simultaneous active audio decodes & model inferences in RAM",
+        description="Maximum simultaneous active decodes & model inferences in RAM (1 avoids L3 thrash & keeps RAM < 2.2 GB)",
     )
     max_queued_requests: int = Field(
         default=20,
@@ -138,7 +181,7 @@ class Settings(BaseSettings):
 
     # Real-Time WebSocket Streaming Settings
     max_ws_connections: int = Field(
-        default=16,
+        default=8,
         ge=1,
         le=256,
         description="Maximum concurrent live WebSocket streaming sessions",

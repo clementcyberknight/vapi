@@ -15,11 +15,12 @@ from app.schemas.transcription import TranscriptSegment
 class TranscriptionOptions:
     language: str | None = None
     beam_size: int | None = None
+    patience: float | None = None
     vad_filter: bool | None = None
     return_timestamps: bool = False
     word_timestamps: bool = False
     initial_prompt: str | None = None
-    temperature: float = 0.0
+    temperature: float | tuple[float, ...] | None = None
     use_batched: bool = True
 
 

@@ -30,7 +30,8 @@ class StreamingSession:
     - Clean finalization on trailing silence, max utterance length, or explicit flush/end.
     """
 
-    PRE_ROLL_MS = 250
+    PRE_ROLL_MS = 350
+    MAX_CONTEXT_CHARS = 160
 
     def __init__(
         self,
@@ -46,6 +47,7 @@ class StreamingSession:
         self.language = language if language is not None else settings.default_language
         self.interim_results = interim_results
         self.initial_prompt = initial_prompt
+        self._recent_context: str = ""
 
         self._pre_roll_samples = int(SAMPLE_RATE * self.PRE_ROLL_MS / 1000)
         self._min_speech_samples = int(SAMPLE_RATE * settings.stream_min_speech_ms / 1000)
@@ -201,6 +203,24 @@ class StreamingSession:
             )
 
         return actions
+
+    def record_final_text(self, text: str) -> None:
+        """Keep a bounded tail of recent finalized speech for continuity across pauses."""
+        cleaned = text.strip()
+        if not cleaned:
+            return
+        combined = f"{self._recent_context} {cleaned}".strip() if self._recent_context else cleaned
+        if len(combined) > self.MAX_CONTEXT_CHARS:
+            trimmed = combined[-self.MAX_CONTEXT_CHARS :]
+            # Snap to a clean word boundary so we never feed half a word as a prompt
+            space_idx = trimmed.find(" ")
+            combined = trimmed[space_idx + 1 :].strip() if space_idx != -1 else trimmed
+        self._recent_context = combined
+
+    def effective_prompt(self) -> str | None:
+        """Combine user initial_prompt with recent finalized context for higher accuracy."""
+        parts = [p.strip() for p in (self.initial_prompt, self._recent_context) if p and p.strip()]
+        return " ".join(parts) if parts else None
 
     def flush(self) -> UtteranceChunk | None:
         """Force-finalize any buffered speech (used on client `flush` or `end`)."""

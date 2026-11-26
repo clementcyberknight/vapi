@@ -105,7 +105,34 @@ def cleanup_stale_uploads(upload_dir: Path) -> int:
     return removed
 
 
-def decode_audio_file(file_path: Path, sample_rate: int = SAMPLE_RATE) -> tuple[np.ndarray, float]:
+def normalize_speech_waveform(waveform: np.ndarray) -> np.ndarray:
+    """Remove DC offset and spike-resistant normalize quiet voice notes without amplifying silence.
+
+    Uses the 99.5th percentile amplitude instead of raw max so a single 1 ms mic click/pop
+    cannot prevent quiet speech from being boosted to optimal Whisper input levels.
+    """
+    if waveform.size == 0:
+        return waveform
+    centered = waveform - float(np.mean(waveform, dtype=np.float32))
+    abs_samples = np.abs(centered)
+    ref_level = float(np.percentile(abs_samples, 99.5))
+    peak = float(np.max(abs_samples))
+
+    # Boost quiet speech (0.008 < ref_level < 0.65); leave dead-air noise floor untouched
+    if 0.008 < ref_level < 0.65:
+        gain = min(10.0, 0.85 / ref_level)
+        centered = np.clip(centered * gain, -1.0, 1.0)
+    elif peak > 1.0:
+        centered = centered / peak
+    return centered.astype(np.float32, copy=False)
+
+
+def decode_audio_file(
+    file_path: Path,
+    sample_rate: int = SAMPLE_RATE,
+    *,
+    normalize: bool = True,
+) -> tuple[np.ndarray, float]:
     """Decode any ffmpeg-supported media file into a contiguous 16 kHz mono float32 array."""
     cmd = [
         "ffmpeg",
@@ -115,16 +142,23 @@ def decode_audio_file(file_path: Path, sample_rate: int = SAMPLE_RATE) -> tuple[
         "error",
         "-i",
         str(file_path),
-        "-f",
-        "f32le",
-        "-acodec",
-        "pcm_f32le",
-        "-ac",
-        "1",
-        "-ar",
-        str(sample_rate),
-        "pipe:1",
     ]
+    if normalize:
+        # Strip sub-80 Hz mains hum (50/60 Hz), fan/generator rumble, and wind noise before 16 kHz resampling
+        cmd.extend(["-af", "highpass=f=80"])
+    cmd.extend(
+        [
+            "-f",
+            "f32le",
+            "-acodec",
+            "pcm_f32le",
+            "-ac",
+            "1",
+            "-ar",
+            str(sample_rate),
+            "pipe:1",
+        ]
+    )
 
     try:
         proc = subprocess.run(
@@ -146,6 +180,9 @@ def decode_audio_file(file_path: Path, sample_rate: int = SAMPLE_RATE) -> tuple[
     waveform = np.frombuffer(proc.stdout, dtype=np.float32).copy()
     if waveform.size == 0:
         raise InvalidAudioError("No audio samples found in the uploaded file.")
+
+    if normalize:
+        waveform = normalize_speech_waveform(waveform)
 
     duration_seconds = round(float(waveform.size) / float(sample_rate), 3)
     return waveform, duration_seconds

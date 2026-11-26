@@ -238,7 +238,7 @@ All variables match [app/core/config.py](./app/core/config.py) and [compose.yaml
 | `MODEL_ID` | `NCAIR1/NigerianAccentedEnglish` | Hugging Face Whisper model repository ID. |
 | `ENGINE` | `ctranslate2` | `ctranslate2` (`faster-whisper`, recommended) or `transformers` (PyTorch fallback). |
 | `DEVICE` | `auto` | `auto`, `cpu`, or `cuda`. |
-| `COMPUTE_TYPE` | `auto` | `auto` (`int8` on CPU, `float16` on CUDA), `int8`, `int8_float16`, `float16`, or `float32`. |
+| `COMPUTE_TYPE` | `auto` | `auto` (`float32` on CPU for lossless fine-tune accuracy, `float16` on CUDA), `int8`, `int16`, `float16`, or `float32`. |
 | `PRELOAD_MODEL` | `true` | Download, convert, and load the model during startup (`false` loads on first request). |
 | `DELETE_HF_SNAPSHOT_AFTER_CONVERT` | `false` | Set `true` to remove the raw ~1 GB HF snapshot after CTranslate2 conversion. |
 | `CACHE_DIR` | `/cache` | Persistent model cache root (`huggingface/`, `ct2/`, `torch/`). |
@@ -249,10 +249,14 @@ All variables match [app/core/config.py](./app/core/config.py) and [compose.yaml
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DEFAULT_LANGUAGE` | `en` | Skips Whisper's language-detection pass; set empty string to auto-detect. |
-| `BEAM_SIZE` | `2` | Beam search width (`1` = fastest greedy, `2` = balanced, `5` = max accuracy). |
+| `BEAM_SIZE` | `5` | Beam search width (`5` = OpenAI accuracy standard, `1` = fastest greedy). |
+| `REPETITION_PENALTY` | `1.1` | Penalizes fine-tune repetition loops that cause hallucinations and 448-step slowdowns. |
+| `NO_REPEAT_NGRAM_SIZE` | `3` | Prevents repeated token n-grams (`0` disables). |
+| `NORMALIZE_AUDIO` | `true` | Applies 60 Hz high-pass rumble filtering and quiet-speech peak normalization. |
 | `VAD_FILTER` | `true` | Enables Silero VAD to skip silence and avoid hallucinations. |
-| `VAD_MIN_SILENCE_MS` | `500` | Minimum silence duration (ms) used by Silero VAD segmentation. |
-| `ENABLE_BATCHED_INFERENCE` | `true` | Uses `BatchedInferencePipeline` for recordings `>= 30` seconds. |
+| `VAD_MIN_SILENCE_MS` | `1000` | Minimum silence duration (ms) for VAD (avoids chopping mid-sentence pauses). |
+| `VAD_SPEECH_PAD_MS` | `400` | Padding (ms) around VAD speech segments so word edges are never clipped. |
+| `ENABLE_BATCHED_INFERENCE` | `true` | Uses `BatchedInferencePipeline` for long recordings and `<|notimestamps|>` VAD alignment. |
 | `BATCH_SIZE` | `4` | Batch size for chunked/batched inference (`4` is memory-safe for 3 GB RAM; `16` on GPU). |
 | `CHUNK_LENGTH_S` | `30` | Chunk window (seconds) for the `transformers` fallback backend. |
 

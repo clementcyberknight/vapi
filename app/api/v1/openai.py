@@ -35,7 +35,7 @@ async def openai_audio_transcriptions(
     language: str | None = Form(default=None),
     prompt: str | None = Form(default=None),
     response_format: Literal["json", "text", "srt", "verbose_json", "vtt"] = Form(default="json"),
-    temperature: float = Form(default=0.0, ge=0.0, le=1.0),
+    temperature: float | None = Form(default=None, ge=0.0, le=1.0),
     timestamp_granularities: list[str] | None = Form(default=None, alias="timestamp_granularities[]"),
 ) -> Response:
     """Drop-in compatible with the OpenAI Audio Transcriptions API."""

@@ -62,6 +62,7 @@ COPY --chown=appuser:appuser app /app/app
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    MALLOC_ARENA_MAX=2 \
     TMPDIR="/tmp" \
     CACHE_DIR="/cache" \
     UPLOAD_TMP_DIR="/cache/tmp" \
@@ -69,9 +70,10 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     HF_HOME="/cache/huggingface" \
     TORCH_HOME="/cache/torch" \
     CT2_VERBOSE=0 \
-    OMP_NUM_THREADS=2 \
-    MKL_NUM_THREADS=2 \
-    OPENBLAS_NUM_THREADS=2
+    CT2_USE_EXPERIMENTAL_PACKED_GEMM=1 \
+    OMP_NUM_THREADS=4 \
+    MKL_NUM_THREADS=4 \
+    OPENBLAS_NUM_THREADS=4
 
 USER appuser
 

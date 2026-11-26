@@ -25,6 +25,7 @@ from app.services.backends import (
     TranscriptionResult,
     create_backend,
 )
+from app.services.backends.faster_whisper import reclaim_process_memory
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +126,12 @@ class TranscriptionService:
     ) -> TranscriptionResult:
         t0 = time.perf_counter()
         duration_s = round(float(waveform.size) / float(SAMPLE_RATE), 3)
-        seg_iter, detected_lang = self.backend.iter_segments(waveform, options)
-        segments = list(seg_iter)
+        try:
+            seg_iter, detected_lang = self.backend.iter_segments(waveform, options)
+            segments = list(seg_iter)
+        finally:
+            if duration_s >= 15.0:
+                reclaim_process_memory()
         elapsed = round(time.perf_counter() - t0, 3)
         full_text = " ".join(seg.text for seg in segments).strip()
         rtf = round(elapsed / duration_s, 4) if duration_s > 0 else 0.0
@@ -144,7 +149,7 @@ class TranscriptionService:
         file_path: Path,
         options: TranscriptionOptions,
     ) -> TranscriptionResult:
-        waveform, _ = decode_audio_file(file_path)
+        waveform, _ = decode_audio_file(file_path, normalize=self.settings.normalize_audio)
         return self._run_waveform_sync(waveform, options)
 
     async def transcribe_file(
@@ -207,7 +212,10 @@ class TranscriptionService:
 
         def _producer() -> None:
             try:
-                waveform, duration_s = decode_audio_file(file_path)
+                waveform, duration_s = decode_audio_file(
+                    file_path,
+                    normalize=self.settings.normalize_audio,
+                )
                 seg_iter, _ = self.backend.iter_segments(waveform, opts)
                 emitted = False
                 for seg in seg_iter:
