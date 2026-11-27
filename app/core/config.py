@@ -158,7 +158,10 @@ class Settings(BaseSettings):
         default=1,
         ge=1,
         le=32,
-        description="Maximum simultaneous active decodes & model inferences in RAM (1 avoids L3 thrash & keeps RAM < 2.2 GB)",
+        description=(
+            "Maximum simultaneous active decodes & model inferences in RAM "
+            "(1 avoids L3 thrash & keeps RAM < 2.2 GB)"
+        ),
     )
     max_queued_requests: int = Field(
         default=20,

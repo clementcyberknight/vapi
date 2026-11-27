@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import gc
 import json
@@ -32,10 +33,8 @@ def reclaim_process_memory() -> None:
     """Run Python GC and trim glibc arenas on Linux so transient RAM returns to the OS."""
     gc.collect()
     if sys.platform.startswith("linux"):
-        try:
+        with contextlib.suppress(Exception):
             ctypes.CDLL("libc.so.6").malloc_trim(0)
-        except Exception:
-            pass
 
 
 def _run_ct2_conversion_subprocess(
