@@ -79,10 +79,15 @@ def test_streaming_session_context_carryover() -> None:
 
 def test_detect_trained_without_timestamps(tmp_path: Path) -> None:
     cfg = {"forced_decoder_ids": [[1, 50259], [2, 50359], [3, 50363]]}
-    (tmp_path / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    (tmp_path / "hf_config.json").write_text(json.dumps(cfg), encoding="utf-8")
     assert _detect_trained_without_timestamps(tmp_path) is True
+
+    legacy = tmp_path / "legacy_cfg"
+    legacy.mkdir()
+    (legacy / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    assert _detect_trained_without_timestamps(legacy) is True
 
     other = tmp_path / "with_ts"
     other.mkdir()
-    (other / "config.json").write_text(json.dumps({"forced_decoder_ids": [[1, 50259]]}), encoding="utf-8")
+    (other / "hf_config.json").write_text(json.dumps({"forced_decoder_ids": [[1, 50259]]}), encoding="utf-8")
     assert _detect_trained_without_timestamps(other) is False

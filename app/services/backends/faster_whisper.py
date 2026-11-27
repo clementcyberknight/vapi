@@ -87,9 +87,11 @@ def _detect_trained_without_timestamps(model_dir: Path) -> bool:
     instead, segment timestamps should come from Silero VAD speech boundaries while the
     decoder runs in `<|notimestamps|>` mode (`without_timestamps=True`).
     """
-    cfg_path = model_dir / "config.json"
-    if cfg_path.exists():
-        try:
+    for cfg_name in ("hf_config.json", "config.json"):
+        cfg_path = model_dir / cfg_name
+        if not cfg_path.exists():
+            continue
+        with contextlib.suppress(Exception):
             cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
             forced = cfg.get("forced_decoder_ids") or []
             if any(
@@ -97,17 +99,15 @@ def _detect_trained_without_timestamps(model_dir: Path) -> bool:
                 for pair in forced
             ):
                 return True
-        except Exception:
-            pass
 
-    gen_path = model_dir / "generation_config.json"
-    if gen_path.exists():
-        try:
+    for gen_name in ("hf_generation_config.json", "generation_config.json"):
+        gen_path = model_dir / gen_name
+        if not gen_path.exists():
+            continue
+        with contextlib.suppress(Exception):
             gen_cfg = json.loads(gen_path.read_text(encoding="utf-8"))
             if gen_cfg.get("return_timestamps") is False:
                 return True
-        except Exception:
-            pass
 
     return False
 
@@ -179,13 +179,11 @@ class FasterWhisperBackend(ASRBackend):
             )
         )
 
-        # Copy config.json & generation_config.json as well so timestamp-training metadata is preserved
+        # Do NOT include config.json or vocabulary.json here: CTranslate2 writes its own
+        # config.json and vocabulary.json during conversion (copying them causes a collision).
         copy_candidates = (
-            "config.json",
-            "generation_config.json",
             "tokenizer.json",
             "preprocessor_config.json",
-            "vocabulary.json",
             "vocab.json",
             "tokenizer_config.json",
             "special_tokens_map.json",
@@ -207,6 +205,14 @@ class FasterWhisperBackend(ASRBackend):
         t0 = time.perf_counter()
         try:
             _run_ct2_conversion_subprocess(snapshot_dir, tmp_dir, copy_files, quantization)
+            # Preserve HF timestamp-training metadata under non-colliding filenames
+            for src_name, dst_name in (
+                ("config.json", "hf_config.json"),
+                ("generation_config.json", "hf_generation_config.json"),
+            ):
+                src_file = snapshot_dir / src_name
+                if src_file.exists():
+                    shutil.copy2(src_file, tmp_dir / dst_name)
             (tmp_dir / ".ready").write_text(
                 f"model={self.settings.model_id}\nquantization={quantization}\n",
                 encoding="utf-8",
